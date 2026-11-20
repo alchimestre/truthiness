@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -153,6 +153,9 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
     expect(await handlers.get("tool_call")({ toolName: "edit" }, ctx)).toBeUndefined();
     await command("on");
     expect(await handlers.get("tool_call")({ toolName: "edit" }, ctx)).toEqual({ additionalContext: expect.stringContaining("may quote") });
+    appendFileSync(store, "not json\n");
+    expect(await edit("source.py")).toEqual({ additionalContext: expect.stringContaining("may quote") });
+    expect(warnings).toEqual(["Truthiness could not read note anchors; warned on this edit."]);
 }
 
 async function expectRecheckAcrossCommits(repo: string, store: string) {
