@@ -26,13 +26,17 @@ export async function load(path: string): Promise<Graph> {
 
 /** Stage only after semantic verification and redaction; the narrow secret scan does not detect all credentials. */
 export async function stage(path: string, payload: string): Promise<void> {
-    const proposed = decodeRecords(Buffer.from(payload));
+    const proposed = parseProposal(payload);
     if (!Object.keys(proposed).length) throw new Error("empty proposal");
     await withLock(path, async () => {
         const current = await readRecordsIfExists(path);
         const combined = mergeRecords(current, proposed);
         await atomicWrite(path, encodeGraph(combined));
     });
+}
+
+export function parseProposal(payload: string): Graph {
+    return decodeRecords(Buffer.from(payload, "utf8"));
 }
 
 /** The caller must independently review the exact batch before publishing. This is not an OS permission boundary. */
@@ -67,7 +71,7 @@ export async function publishAuthorized(path: string, payload: string, approval:
 function checkBatch(payload: string, expectedDigest: string): Graph {
     const digest = createHash("sha256").update(payload, "utf8").digest("hex");
     if (digest !== expectedDigest.toLowerCase()) throw new Error("review digest does not match exact batch");
-    const proposed = decodeRecords(Buffer.from(payload, "utf8"));
+    const proposed = parseProposal(payload);
     if (!Object.keys(proposed).length) throw new Error("empty publication batch");
     return proposed;
 }
@@ -129,18 +133,24 @@ function decodeRecords(data: Buffer): Graph {
     }
     return graph;
 }
+
+const knownSecretFormats = [
+    /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
+    /\bAKIA[0-9A-Z]{16}\b/,
+    /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
+    /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/,
+    /\b(?:password|secret|api[_-]?key)\s*[:=]\s*['"]?[A-Za-z0-9/+_.-]{12,}/i,
+    /\b[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^/\s@]+@/i,
+];
+
+export function containsDetectableSecret(text: string): boolean {
+    return knownSecretFormats.some(pattern => pattern.test(text));
+}
+
 function rejectDetectableSecrets(record: StoreRecord): void {
-    const knownSecretFormats = [
-        /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
-        /\bAKIA[0-9A-Z]{16}\b/,
-        /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
-        /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/,
-        /\b(?:password|secret|api[_-]?key)\s*[:=]\s*['"]?[A-Za-z0-9/+_.-]{12,}/i,
-        /\b[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^/\s@]+@/i,
-    ];
     const visit = (value: unknown): void => {
         if (typeof value === "string") {
-            if (knownSecretFormats.some(pattern => pattern.test(value))) throw new Error(`record ${record.id} contains recognizable secret material`);
+            if (containsDetectableSecret(value)) throw new Error(`record ${record.id} contains recognizable secret material`);
         } else if (Array.isArray(value)) {
             for (const item of value) visit(item);
         } else if (value && typeof value === "object") {

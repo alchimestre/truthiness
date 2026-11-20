@@ -1,11 +1,17 @@
 #!/usr/bin/env bun
-import { load, publish, publishAuthorized, stage } from "./store.ts";
-import { index, query } from "./lookup.ts";
+import { readFile } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
+import { bootstrap, checkout, readBlob } from "./bootstrap.ts";
+import { load, parseProposal, publish, publishAuthorized, stage } from "./store.ts";
+import { hasStartupClaims, index, query } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
+import { digest, review } from "./review.ts";
+
+const maxProposalBytes = 16 * 1024 * 1024;
 
 async function run(args: string[]) {
     const [command, path, ...options] = args;
-    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE TOKENIZER | index STORE SCOPE REVISION TOKENIZER | stage PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE");
+    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE TOKENIZER | index STORE SCOPE REVISION TOKENIZER | stage PENDING | bootstrap STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE");
     switch (command) {
         case "validate":
             requireOptions(options, 0);
@@ -32,6 +38,14 @@ async function run(args: string[]) {
             requireOptions(options, 0);
             await stage(path, await readInput());
             return;
+        case "bootstrap":
+            requireOptions(options, 0);
+            await bootstrapStore(path, process.cwd());
+            return;
+        case "review-pending":
+            requireOptions(options, 1);
+            await reviewPending(path, options[0], process.cwd());
+            return;
         case "publish":
             requireOptions(options, 1);
             await publish(path, await readInput(), options[0]);
@@ -45,20 +59,72 @@ async function run(args: string[]) {
     }
 }
 
+async function bootstrapStore(store: string, directory: string) {
+    const revision = head(directory);
+    const current = await loadIfPresent(store);
+    if (hasStartupClaims(current, revision)) return;
+    const { batch, sources } = bootstrap(directory, revision, new Set(Object.keys(current)));
+    if (!batch) return;
+    const result = review(batch, revision, path => sources.get(path));
+    if (!result.approved) return;
+    try {
+        await publish(store, result.approved, digest(result.approved));
+    } catch (error) {
+        if (!hasStartupClaims(await loadIfPresent(store), revision)) throw error;
+        return;
+    }
+    console.log(`Bootstrapped ${result.published} source claims.`);
+}
+
+async function reviewPending(store: string, pending: string, directory: string) {
+    const file = Bun.file(pending);
+    if (file.size > maxProposalBytes) throw new Error("input exceeds 16 MiB");
+    const batch = decodeInput(await readFile(pending));
+    const revision = head(directory);
+    const result = review(batch, revision, path => readBlob(directory, revision, path), process.env.TRUTHINESS_REVIEWER);
+    if (result.approved) {
+        if (head(directory) !== revision) throw new Error("HEAD changed during review; batch remains pending");
+        const current = await loadIfPresent(store);
+        const additions = Object.values(parseProposal(result.approved)).filter(record => !isDeepStrictEqual(record, current[record.id]));
+        const payload = additions.map(record => `${JSON.stringify(record)}\n`).join("");
+        if (payload) await publish(store, payload, digest(payload));
+    }
+    console.log(JSON.stringify({ published: result.published, pending: result.pending }));
+}
+
+async function loadIfPresent(path: string) {
+    try {
+        return await load(path);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        return Object.create(null) as Awaited<ReturnType<typeof load>>;
+    }
+}
+
+function head(directory: string): string {
+    const revision = checkout(directory, ["rev-parse", "--verify", "HEAD^{commit}"])?.trim();
+    if (!revision) throw new Error("a Git checkout with a commit is required");
+    return revision;
+}
+
 function requireOptions(options: string[], expected: number) {
     if (options.length !== expected) throw new Error("invalid arguments");
 }
 
 async function readInput() {
-    const maxBytes = 16 * 1024 * 1024;
     const chunks: Buffer[] = [];
     let size = 0;
     for await (const chunk of process.stdin) {
         size += chunk.length;
-        if (size > maxBytes) throw new Error("input exceeds 16 MiB");
+        if (size > maxProposalBytes) throw new Error("input exceeds 16 MiB");
         chunks.push(chunk);
     }
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks, size));
+    return decodeInput(Buffer.concat(chunks, size));
+}
+
+function decodeInput(bytes: Buffer) {
+    if (bytes.length > maxProposalBytes) throw new Error("input exceeds 16 MiB");
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
 }
 
 function countTokens(program: string, input: string) {
