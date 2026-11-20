@@ -37,6 +37,41 @@ export function review(batch: string, revision: string, readSource: Source, revi
     return { approved: jsonl, published, pending: claims.length - published };
 }
 
+export function recheckBatch(store: Graph, revision: string): string {
+    const recorded = { recorded_at: new Date().toISOString(), recorded_by: "truthiness-recheck" };
+    const lines: RecordLine[] = [];
+    for (const [claimID, links] of evidenceByClaim(store)) {
+        const claim = store[claimID];
+        if (claim?.kind !== "claim" || claim.check !== null) continue;
+        const assessments = links.map(link => link.assessment as Record<string, unknown> | undefined);
+        if (assessments.some(assessment => assessment?.outcome !== "supports" || assessment.resolves !== undefined || assessment.revision === revision)) continue;
+        const excerpts = new Map<string, { path: string; content: unknown }>();
+        for (const link of links) {
+            const observation = store[String(link.from)];
+            const path = String(observation.source_ref).slice(String(observation.source_ref).indexOf(":") + 1);
+            excerpts.set(JSON.stringify([path, observation.content]), { path, content: observation.content });
+        }
+        lines.push(claim);
+        for (const [position, { path, content }] of [...excerpts.values()].entries()) {
+            const id = `${claimID}-recheck-${revision.slice(0, 12)}-${position}`;
+            lines.push(
+                { ...recorded, id, kind: "observation", content, source_ref: `${revision}:${path}`, captured_at: recorded.recorded_at, context: { revision, source_event_id: id, check_session: `recheck-${revision}` } },
+                { ...recorded, id: `${id}-assessment`, kind: "evidence_for", from: id, to: claimID, rationale: "Source excerpt still present", assessment: { outcome: "supports", scope: claim.scope, revision } },
+            );
+        }
+    }
+    return lines.map(line => `${JSON.stringify(line)}\n`).join("");
+}
+
+function evidenceByClaim(store: Graph) {
+    const links = new Map<string, RecordLine[]>();
+    for (const record of Object.values(store)) {
+        if (record.kind !== "evidence_for") continue;
+        links.set(String(record.to), [...(links.get(String(record.to)) ?? []), record]);
+    }
+    return links;
+}
+
 function groupEvidence(graph: Graph, records: RecordLine[]) {
     const evidence = new Map<string, RecordLine[]>();
     const observations = new Set<string>();

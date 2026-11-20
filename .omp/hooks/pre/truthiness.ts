@@ -1,8 +1,10 @@
 import { execFile, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { unlink } from "node:fs/promises";
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { HookAPI } from "@oh-my-pi/pi-coding-agent/extensibility/hooks";
 import { promisify } from "node:util";
 
@@ -32,13 +34,22 @@ function snapshot(cwd: string, store: string, head = cleanHead(cwd)) {
     }
 }
 
+const repositoryRoots = new Map<string, string | undefined>();
+
+function memoryPaths(cwd: string) {
+    if (!repositoryRoots.has(cwd)) repositoryRoots.set(cwd, command("git", ["rev-parse", "--show-toplevel"], cwd)?.trim());
+    const root = repositoryRoots.get(cwd);
+    const stateHome = process.env.XDG_STATE_HOME || join(homedir(), ".local", "state");
+    const repository = root && join(stateHome, "truthiness", `${basename(root)}-${createHash("sha256").update(root).digest("hex").slice(0, 12)}`);
+    return {
+        store: process.env.TRUTHINESS_STORE || (repository && join(repository, "canonical.jsonl")),
+        pending: process.env.TRUTHINESS_PENDING || (repository && join(repository, "pending")),
+    };
+}
+
 export default function truthinessHook(pi: HookAPI): void {
-    const program = process.env.TRUTHINESS_COMMAND;
-    const store = process.env.TRUTHINESS_STORE;
-    const tokenizer = process.env.TRUTHINESS_TOKENIZER;
-    const pending = process.env.TRUTHINESS_PENDING;
-    if (!program || !store) return;
-    const drafts = new Map<string, string>();
+    const program = process.env.TRUTHINESS_COMMAND || fileURLToPath(new URL("../../../src/cli.ts", import.meta.url));
+    const tokenizer = process.env.TRUTHINESS_TOKENIZER || fileURLToPath(new URL("../../truthiness-tokenizer.sh", import.meta.url));
     let enabled = true;
 
     const restoreMode = (ctx: { sessionManager: { getBranch(): Array<{ type: string; customType?: string; data?: unknown }> } }) => {
@@ -85,27 +96,22 @@ export default function truthinessHook(pi: HookAPI): void {
     pi.registerTool({
         name: "truthiness_draft",
         label: "Memory draft",
-        description: "Hold a complete redacted proposal for automatic review at closeout, or send it for automatic review now. Unverified claims remain pending without prompting the user.",
-        parameters: pi.zod.object({ jsonl: pi.zod.string(), early: pi.zod.boolean() }),
-        async execute(_id, { jsonl, early }, _signal, _onUpdate, ctx) {
-            if (!enabled) return { content: [{ type: "text", text: "Truthiness is off for this session; nothing was held or staged." }], details: {} };
-            if (!pending) return { content: [{ type: "text", text: "No pending directory is configured." }], details: {}, isError: true };
-            if (early) {
-                const text = await stageAndReview(ctx.cwd, pending, jsonl);
-                return { content: [{ type: "text", text }], details: {} };
-            }
-            drafts.set(ctx.sessionManager.getSessionId(), jsonl);
-            return {
-                content: [{ type: "text", text: "Draft held for automatic review at closeout." }],
-                details: {},
-            };
+        description: "Submit a complete redacted proposal. It is reviewed against committed source immediately; supported claims publish, the rest stay pending.",
+        parameters: pi.zod.object({ jsonl: pi.zod.string() }),
+        async execute(_id, { jsonl }, _signal, _onUpdate, ctx) {
+            if (!enabled) return { content: [{ type: "text", text: "Truthiness is off for this session; nothing was staged." }], details: {} };
+            const { store, pending } = memoryPaths(ctx.cwd);
+            if (!store || !pending) return { content: [{ type: "text", text: "No project memory is configured for this directory." }], details: {}, isError: true };
+            const text = await stageAndReview(ctx.cwd, store, pending, jsonl);
+            return { content: [{ type: "text", text }], details: {} };
         },
     });
 
     pi.on("before_agent_start", async (_event, ctx) => {
         if (!enabled || !tokenizer) return;
+        const { store } = memoryPaths(ctx.cwd);
         const head = cleanHead(ctx.cwd);
-        if (!head) return;
+        if (!store || !head) return;
         if (process.env.TRUTHINESS_BOOTSTRAP !== "off") {
             try {
                 await runWorker(program, ["bootstrap", store], { cwd: ctx.cwd, timeout: 15_000 });
@@ -129,7 +135,8 @@ export default function truthinessHook(pi: HookAPI): void {
 
     pi.on("context", async (event, ctx) => {
         if (!enabled) return { messages: event.messages.filter(message => message.role !== "custom" || message.customType !== messageType) };
-        const current = tokenizer ? snapshot(ctx.cwd, store) : undefined;
+        const { store } = memoryPaths(ctx.cwd);
+        const current = tokenizer && store && existsSync(resolve(ctx.cwd, store)) ? snapshot(ctx.cwd, store) : undefined;
         const key = current ? `${current.head}:${current.digest}` : undefined;
         let seen = false;
         const messages = event.messages.filter(message => {
@@ -141,20 +148,13 @@ export default function truthinessHook(pi: HookAPI): void {
         return { messages };
     });
 
-    pi.on("tool_call", async (event) => {
-        if (!enabled) return;
-        if (event.toolName === "edit" || event.toolName === "write") return { additionalContext: warning };
+    pi.on("tool_call", async (event, ctx) => {
+        if (!enabled || (event.toolName !== "edit" && event.toolName !== "write")) return;
+        const { store } = memoryPaths(ctx.cwd);
+        if (store && existsSync(resolve(ctx.cwd, store))) return { additionalContext: warning };
     });
 
-    pi.on("session_shutdown", async (_event, ctx) => {
-        const id = ctx.sessionManager.getSessionId();
-        const draft = drafts.get(id);
-        if (draft === undefined) return;
-        if (enabled && pending) await stageAndReview(ctx.cwd, pending, draft);
-        drafts.delete(id);
-    });
-
-    async function stageAndReview(cwd: string, pendingDirectory: string, draft: string): Promise<string> {
+    async function stageAndReview(cwd: string, store: string, pendingDirectory: string, draft: string): Promise<string> {
         const path = resolve(cwd, pendingDirectory, `${randomUUID()}.jsonl`);
         if (command(program, ["stage", path], cwd, draft) === undefined) {
             const text = "Could not confirm staging; nothing was sent for automatic review.";

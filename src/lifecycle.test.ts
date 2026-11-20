@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +46,48 @@ test("bootstraps startup memory and reviews staged drafts without a second sessi
     }
 });
 
+test("keeps a separate default store per repository and stays silent outside one", async () => {
+    const root = mkdtempSync(join(tmpdir(), "truthiness-defaults-"));
+    const keys = ["TRUTHINESS_COMMAND", "TRUTHINESS_STORE", "TRUTHINESS_PENDING", "TRUTHINESS_TOKENIZER", "TRUTHINESS_BOOTSTRAP", "XDG_STATE_HOME"];
+    const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+    try {
+        for (const key of keys) delete process.env[key];
+        process.env.XDG_STATE_HOME = join(root, "state");
+        const repos = ["a", "b"].map(parent => join(root, parent, "app"));
+        for (const [position, repo] of repos.entries()) {
+            mkdirSync(repo, { recursive: true });
+            git(repo, "init", "--quiet");
+            writeFileSync(join(repo, "README.md"), `# Guide ${position}\n`);
+            git(repo, "add", "README.md");
+            git(repo, "commit", "-m", "Guide");
+        }
+        const handlers = new Map();
+        truthinessHook({
+            on: (name, handler) => handlers.set(name, handler),
+            registerTool: () => {},
+            registerCommand: () => {},
+            zod: { object: () => null, string: () => null, boolean: () => null },
+            logger: { warn: () => {} },
+        } as Parameters<typeof truthinessHook>[0]);
+        const session = (cwd: string) => ({ cwd, sessionManager: { getBranch: () => [] } });
+        for (const [position, repo] of repos.entries()) {
+            const startup = await handlers.get("before_agent_start")({}, session(repo));
+            expect(startup.message.content).toContain(`# Guide ${position}`);
+            expect(startup.message.content).not.toContain(`# Guide ${1 - position}`);
+        }
+        expect(readdirSync(join(root, "state", "truthiness"))).toHaveLength(2);
+        const outside = join(root, "plain");
+        mkdirSync(outside);
+        expect(await handlers.get("tool_call")({ toolName: "edit" }, session(outside))).toBeUndefined();
+    } finally {
+        for (const [key, value] of Object.entries(original)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
 async function exerciseLifecycle(repo: string, state: string, store: string) {
     const handlers = new Map();
     const branch = [];
@@ -81,27 +123,24 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
         { id: "assessment-1", kind: "evidence_for", recorded_at: "2026-01-01T00:00:00Z", recorded_by: "fixture", from: "observation-1", to: "claim-1", rationale: "Exact source line confirmed", assessment: { outcome: "supports", scope: "repo", revision } },
     ].map(record => JSON.stringify(record)).join("\n") + "\n";
     const unsupported = batch("not a source line");
-    await handlers.get("truthiness_draft")("test", { jsonl: unsupported, early: false }, undefined, undefined, ctx);
-    expect(readdirSync(state).filter(file => file.endsWith(".jsonl"))).toEqual(["canonical.jsonl"]);
-    await handlers.get("session_shutdown")({}, ctx);
+    const submit = async (jsonl: string) => (await handlers.get("truthiness_draft")("test", { jsonl }, undefined, undefined, ctx)).content[0].text;
+    expect(await submit(unsupported)).toBe("0 published, 1 pending automatic or operator review.");
     const staged = readdirSync(state).filter(file => file.endsWith(".jsonl") && file !== "canonical.jsonl");
     expect(staged).toHaveLength(1);
     expect(readFileSync(join(state, staged[0]), "utf8").trim().split("\n").map(line => JSON.parse(line).id).sort()).toEqual(["assessment-1", "claim-1", "observation-1"]);
     expect(readFileSync(store, "utf8")).toBe(seeded);
     expect(warnings).toEqual([]);
     const verified = batch("def handler(request):");
-    const submit = (jsonl: string, early: boolean) => handlers.get("truthiness_draft")("test", { jsonl, early }, undefined, undefined, ctx);
-    await submit(verified, false);
-    expect(readFileSync(store, "utf8")).toBe(seeded);
-    await handlers.get("session_shutdown")({}, ctx);
+    expect(await submit(verified)).toBe("1 published, 0 pending automatic or operator review.");
     expect(readFileSync(store, "utf8")).toContain('"id":"claim-1"');
     expect(readdirSync(state).filter(file => file.endsWith(".jsonl"))).toHaveLength(2);
+    await expectRecheckAcrossCommits(repo, store);
 
     await command("off");
     expect(await handlers.get("before_agent_start")({}, ctx)).toBeUndefined();
     expect((await handlers.get("context")({ messages: [message] }, ctx)).messages).toEqual([]);
     expect(await handlers.get("tool_call")({ toolName: "edit" }, ctx)).toBeUndefined();
-    const refused = await handlers.get("truthiness_draft")("test", { jsonl: verified, early: true }, undefined, undefined, ctx);
+    const refused = await handlers.get("truthiness_draft")("test", { jsonl: verified }, undefined, undefined, ctx);
     expect(refused.content[0].text).toContain("off");
     expect(readdirSync(state).filter(file => file.endsWith(".jsonl"))).toHaveLength(2);
 
@@ -110,4 +149,23 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
     expect(await handlers.get("tool_call")({ toolName: "edit" }, ctx)).toBeUndefined();
     await command("on");
     expect(await handlers.get("tool_call")({ toolName: "edit" }, ctx)).toEqual({ additionalContext: expect.stringContaining("verify the source") });
+}
+
+async function expectRecheckAcrossCommits(repo: string, store: string) {
+    const startupIndex = () => {
+        Bun.spawnSync([executable, "bootstrap", store], { cwd: repo });
+        const revision = git(repo, "rev-parse", "HEAD");
+        return Bun.spawnSync([executable, "index", store, "", revision, process.env.TRUTHINESS_TOKENIZER!], { cwd: repo }).stdout.toString();
+    };
+    writeFileSync(join(repo, "LATER.md"), "# Added after the first bootstrap\n");
+    git(repo, "add", "LATER.md");
+    git(repo, "commit", "-m", "Unrelated");
+    const afterUnrelated = startupIndex();
+    expect(afterUnrelated).toContain('"id":"claim-1"');
+    expect(afterUnrelated.split("Added after the first bootstrap")).toHaveLength(2);
+    expect(startupIndex()).toBe(afterUnrelated);
+    writeFileSync(join(repo, "source.py"), "def renamed(request):\n    return request\n");
+    git(repo, "add", "source.py");
+    git(repo, "commit", "-m", "Rename");
+    expect(startupIndex()).not.toContain('"id":"claim-1"');
 }

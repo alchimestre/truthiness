@@ -236,10 +236,6 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
-export function hasStartupClaims(records: Records, revision: string): boolean {
-  return Object.keys(records).some(id => indexable(records, id, "", revision));
-}
-
 function indexable(records: Records, id: string, scope: string, revision: string): boolean {
   const record = records[id];
   if (text(record, "kind") !== "claim") return false;
