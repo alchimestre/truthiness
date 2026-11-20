@@ -69,160 +69,163 @@ function memoryPaths(cwd: string) {
     };
 }
 
+type Entry = { type: string; customType?: string; data?: unknown; details?: unknown };
+type Session = { cwd: string; sessionManager: { getBranch(): Entry[] } };
+type Message = { role: string; customType?: string; details?: unknown };
+type Hook = { pi: HookAPI; program: string; tokenizer: string; enabled: boolean };
+
 export default function truthinessHook(pi: HookAPI): void {
-    const program = process.env.TRUTHINESS_COMMAND || fileURLToPath(new URL("../../../src/cli.ts", import.meta.url));
-    const tokenizer = process.env.TRUTHINESS_TOKENIZER || fileURLToPath(new URL("../../truthiness-tokenizer.sh", import.meta.url));
-    let enabled = true;
-
-    const restoreMode = (ctx: { sessionManager: { getBranch(): Array<{ type: string; customType?: string; data?: unknown }> } }) => {
-        for (const entry of ctx.sessionManager.getBranch()) {
-            if (entry.type !== "custom" || entry.customType !== modeEntry) continue;
-            const data = entry.data as { enabled?: unknown } | undefined;
-            if (typeof data?.enabled === "boolean") enabled = data.enabled;
-        }
+    const hook: Hook = {
+        pi,
+        program: process.env.TRUTHINESS_COMMAND || fileURLToPath(new URL("../../../src/cli.ts", import.meta.url)),
+        tokenizer: process.env.TRUTHINESS_TOKENIZER || fileURLToPath(new URL("../../truthiness-tokenizer.sh", import.meta.url)),
+        enabled: true,
     };
+    registerModeCommand(hook);
+    for (const event of ["session_start", "session_tree", "session_compact"] as const) {
+        pi.on(event, async (_event, ctx) => restoreMode(hook, ctx));
+    }
+    registerDraftTool(hook);
+    pi.on("before_agent_start", async (_event, ctx) => startupIndex(hook, ctx));
+    pi.on("context", async (event, ctx) => ({ messages: currentIndexOnly(hook, event.messages, ctx.cwd) }));
+    pi.on("tool_call", async (event, ctx) => editWarning(hook, event, ctx.cwd));
+}
 
+function restoreMode(hook: Hook, ctx: Session) {
+    for (const entry of ctx.sessionManager.getBranch()) {
+        if (entry.type !== "custom" || entry.customType !== modeEntry) continue;
+        const data = entry.data as { enabled?: unknown } | undefined;
+        if (typeof data?.enabled === "boolean") hook.enabled = data.enabled;
+    }
+}
+
+const modeByArgument: Record<string, boolean> = { on: true, off: false };
+
+function registerModeCommand(hook: Hook) {
     const setMode = (next: boolean, ctx: { ui: { notify(message: string, level?: string): void } }) => {
-        enabled = next;
-        pi.appendEntry(modeEntry, { enabled });
-        ctx.ui.notify(`Truthiness ${enabled ? "enabled" : "disabled"} for this session.`, "info");
+        hook.enabled = next;
+        hook.pi.appendEntry(modeEntry, { enabled: next });
+        ctx.ui.notify(`Truthiness ${next ? "enabled" : "disabled"} for this session.`, "info");
     };
-
-    const modeByArgument: Record<string, boolean> = { on: true, off: false };
-
-    pi.registerCommand("truthiness", {
+    hook.pi.registerCommand("truthiness", {
         description: "Toggle project memory for this session (on/off/status)",
         handler: async (args, ctx) => {
-            restoreMode(ctx);
+            restoreMode(hook, ctx);
             const argument = args.trim().toLowerCase();
-            if (argument === "") {
-                setMode(!enabled, ctx);
-                return;
-            }
-            if (argument === "status") {
-                ctx.ui.notify(`Truthiness is ${enabled ? "enabled" : "disabled"}.`, "info");
-                return;
-            }
-            if (!Object.hasOwn(modeByArgument, argument)) {
-                ctx.ui.notify(`Unknown argument "${argument}"; use on, off or status.`, "warning");
-                return;
-            }
+            if (argument === "") return setMode(!hook.enabled, ctx);
+            if (argument === "status") return ctx.ui.notify(`Truthiness is ${hook.enabled ? "enabled" : "disabled"}.`, "info");
+            if (!Object.hasOwn(modeByArgument, argument)) return ctx.ui.notify(`Unknown argument "${argument}"; use on, off or status.`, "warning");
             setMode(modeByArgument[argument], ctx);
         },
     });
+}
 
-    for (const event of ["session_start", "session_tree", "session_compact"] as const) {
-        pi.on(event, async (_event, ctx) => restoreMode(ctx));
-    }
-
-    pi.registerTool({
+function registerDraftTool(hook: Hook) {
+    hook.pi.registerTool({
         name: "truthiness_draft",
         label: "Memory draft",
         description: "Submit new notes as store records in JSONL, one per line, with secrets removed. Each note is checked against committed source now: supported notes publish, the rest stay pending.",
-        parameters: pi.zod.object({ jsonl: pi.zod.string() }),
+        parameters: hook.pi.zod.object({ jsonl: hook.pi.zod.string() }),
         async execute(_id, { jsonl }, _signal, _onUpdate, ctx) {
-            if (!enabled) return { content: [{ type: "text", text: "Truthiness is off for this session; nothing was staged." }], details: {} };
+            if (!hook.enabled) return { content: [{ type: "text", text: "Truthiness is off for this session; nothing was staged." }], details: {} };
             const { store, pending } = memoryPaths(ctx.cwd);
             if (!store || !pending) return { content: [{ type: "text", text: "No project memory is configured for this directory." }], details: {}, isError: true };
-            const text = await stageAndReview(ctx.cwd, store, pending, jsonl);
+            const text = await stageAndReview(hook, ctx.cwd, store, pending, jsonl);
             return { content: [{ type: "text", text }], details: {} };
         },
     });
+}
 
-    pi.on("before_agent_start", async (_event, ctx) => {
-        if (!enabled) return;
-        const { store } = memoryPaths(ctx.cwd);
-        const head = cleanHead(ctx.cwd);
-        if (!store || !head) return;
-        if (process.env.TRUTHINESS_BOOTSTRAP !== "off") {
-            try {
-                await runWorker(program, ["bootstrap", store], { cwd: ctx.cwd, timeout: 15_000 });
-            } catch {
-                pi.logger.warn("Truthiness could not bootstrap project memory.");
-            }
-        }
-        const current = snapshot(ctx.cwd, store, head);
-        if (!current) return;
-        const key = `${current.head}:${current.digest}`;
-        if (ctx.sessionManager.getBranch().some(entry => entry.type === "custom_message" && entry.customType === messageType && entry.details === key)) return;
-        const index = command(program, ["index", store, "", current.head, tokenizer], ctx.cwd);
-        if (index === undefined) {
-            pi.logger.warn("Truthiness could not generate the startup index.");
-            return;
-        }
-        const after = snapshot(ctx.cwd, store);
-        if (after?.head !== current.head || after.digest !== current.digest) return;
-        return { message: { customType: messageType, content: index, display: false, details: key } };
-    });
-
-    pi.on("context", async (event, ctx) => {
-        if (!enabled) return { messages: event.messages.filter(message => message.role !== "custom" || message.customType !== messageType) };
-        const { store } = memoryPaths(ctx.cwd);
-        const current = store && existsSync(resolve(ctx.cwd, store)) ? snapshot(ctx.cwd, store) : undefined;
-        const key = current ? `${current.head}:${current.digest}` : undefined;
-        let seen = false;
-        const messages = event.messages.filter(message => {
-            if (message.role !== "custom" || message.customType !== messageType) return true;
-            if (!key || message.details !== key || seen) return false;
-            seen = true;
-            return true;
-        });
-        return { messages };
-    });
-
-    pi.on("tool_call", async (event, ctx) => {
-        if (!enabled || (event.toolName !== "edit" && event.toolName !== "write")) return;
-        const { root, store } = memoryPaths(ctx.cwd);
-        if (!store || !existsSync(resolve(ctx.cwd, store))) return;
-        const edited = root ? editedPaths(event.input, ctx.cwd, root) : [];
-        if (edited.length === 0) return { additionalContext: unknownTargetWarning };
-        const anchored = await anchoredPathsOf(resolve(ctx.cwd, store), ctx.cwd);
-        if (!anchored) {
-            pi.logger.warn("Truthiness could not read note anchors; warned on this edit.");
-            return { additionalContext: unknownTargetWarning };
-        }
-        const quoted = edited.filter(path => anchored.has(path));
-        if (quoted.length) return { additionalContext: anchoredWarning(quoted) };
-    });
-
-    async function anchoredPathsOf(store: string, cwd: string): Promise<Set<string> | undefined> {
-        const { mtimeMs, size } = statSync(store);
-        const stamp = `${mtimeMs}:${size}`;
-        const cached = anchorCache.get(store);
-        if (cached?.stamp === stamp) return cached.paths;
-        try {
-            const { stdout } = await runWorker(program, ["anchors", store], { cwd, timeout: 5000 });
-            const parsed = JSON.parse(stdout) as { paths?: unknown };
-            if (!Array.isArray(parsed.paths) || !parsed.paths.every(path => typeof path === "string")) return undefined;
-            const paths = new Set(parsed.paths as string[]);
-            anchorCache.set(store, { stamp, paths });
-            return paths;
-        } catch {
-            return undefined;
-        }
+async function startupIndex(hook: Hook, ctx: Session) {
+    if (!hook.enabled) return;
+    const { store } = memoryPaths(ctx.cwd);
+    const head = cleanHead(ctx.cwd);
+    if (!store || !head) return;
+    if (process.env.TRUTHINESS_BOOTSTRAP !== "off") {
+        const bootstrap = runWorker(hook.program, ["bootstrap", store], { cwd: ctx.cwd, timeout: 15_000 });
+        await bootstrap.catch(() => hook.pi.logger.warn("Truthiness could not bootstrap project memory."));
     }
+    const current = snapshot(ctx.cwd, store, head);
+    if (!current) return;
+    const key = `${current.head}:${current.digest}`;
+    if (ctx.sessionManager.getBranch().some(entry => entry.type === "custom_message" && entry.customType === messageType && entry.details === key)) return;
+    const index = command(hook.program, ["index", store, "", current.head, hook.tokenizer], ctx.cwd);
+    if (index === undefined) {
+        hook.pi.logger.warn("Truthiness could not generate the startup index.");
+        return;
+    }
+    const after = snapshot(ctx.cwd, store);
+    if (after?.head !== current.head || after.digest !== current.digest) return;
+    return { message: { customType: messageType, content: index, display: false, details: key } };
+}
 
-    async function stageAndReview(cwd: string, store: string, pendingDirectory: string, draft: string): Promise<string> {
-        const path = resolve(cwd, pendingDirectory, `${randomUUID()}.jsonl`);
-        if (command(program, ["stage", path], cwd, draft) === undefined) {
-            const text = "Could not confirm staging; nothing was sent for automatic review.";
-            pi.logger.warn(text);
-            return text;
+function currentIndexOnly<T extends Message>(hook: Hook, messages: T[], cwd: string): T[] {
+    const isIndex = (message: T) => message.role === "custom" && message.customType === messageType;
+    if (!hook.enabled) return messages.filter(message => !isIndex(message));
+    const { store } = memoryPaths(cwd);
+    const current = store && existsSync(resolve(cwd, store)) ? snapshot(cwd, store) : undefined;
+    const key = current ? `${current.head}:${current.digest}` : undefined;
+    let seen = false;
+    return messages.filter(message => {
+        if (!isIndex(message)) return true;
+        if (!key || message.details !== key || seen) return false;
+        seen = true;
+        return true;
+    });
+}
+
+async function editWarning(hook: Hook, event: { toolName: string; input?: Record<string, unknown> }, cwd: string) {
+    if (!hook.enabled || (event.toolName !== "edit" && event.toolName !== "write")) return;
+    const { root, store } = memoryPaths(cwd);
+    if (!store || !existsSync(resolve(cwd, store))) return;
+    const edited = root ? editedPaths(event.input, cwd, root) : [];
+    if (edited.length === 0) return { additionalContext: unknownTargetWarning };
+    const anchored = await anchoredPathsOf(hook.program, resolve(cwd, store), cwd);
+    if (!anchored) {
+        hook.pi.logger.warn("Truthiness could not read note anchors; warned on this edit.");
+        return { additionalContext: unknownTargetWarning };
+    }
+    const quoted = edited.filter(path => anchored.has(path));
+    if (quoted.length) return { additionalContext: anchoredWarning(quoted) };
+}
+
+async function anchoredPathsOf(program: string, store: string, cwd: string): Promise<Set<string> | undefined> {
+    const { mtimeMs, size } = statSync(store);
+    const stamp = `${mtimeMs}:${size}`;
+    const cached = anchorCache.get(store);
+    if (cached?.stamp === stamp) return cached.paths;
+    try {
+        const { stdout } = await runWorker(program, ["anchors", store], { cwd, timeout: 5000 });
+        const parsed = JSON.parse(stdout) as { paths?: unknown };
+        if (!Array.isArray(parsed.paths) || !parsed.paths.every(path => typeof path === "string")) return undefined;
+        const paths = new Set(parsed.paths as string[]);
+        anchorCache.set(store, { stamp, paths });
+        return paths;
+    } catch {
+        return undefined;
+    }
+}
+
+async function stageAndReview(hook: Hook, cwd: string, store: string, pendingDirectory: string, draft: string): Promise<string> {
+    const path = resolve(cwd, pendingDirectory, `${randomUUID()}.jsonl`);
+    if (command(hook.program, ["stage", path], cwd, draft) === undefined) {
+        const text = "Could not confirm staging; nothing was sent for automatic review.";
+        hook.pi.logger.warn(text);
+        return text;
+    }
+    try {
+        const { stdout } = await runWorker(hook.program, ["review-pending", store, path], { cwd, timeout: 40_000 });
+        const result = JSON.parse(stdout) as { published: number; pending: number };
+        if (!Number.isSafeInteger(result.published) || result.published < 0 || !Number.isSafeInteger(result.pending) || result.pending < 0) {
+            throw new Error("invalid review outcome");
         }
-        try {
-            const { stdout } = await runWorker(program, ["review-pending", store, path], { cwd, timeout: 40_000 });
-            const result = JSON.parse(stdout) as { published: number; pending: number };
-            if (!Number.isSafeInteger(result.published) || result.published < 0 || !Number.isSafeInteger(result.pending) || result.pending < 0) {
-                throw new Error("invalid review outcome");
-            }
-            if (result.pending === 0 && result.published > 0) {
-                await unlink(path).catch(() => pi.logger.warn("Truthiness published the batch but could not remove its staged copy."));
-            }
-            return `${result.published} published, ${result.pending} pending automatic or operator review.`;
-        } catch {
-            const text = "Could not confirm automatic review; the staged batch was retained.";
-            pi.logger.warn(text);
-            return text;
+        if (result.pending === 0 && result.published > 0) {
+            await unlink(path).catch(() => hook.pi.logger.warn("Truthiness published the batch but could not remove its staged copy."));
         }
+        return `${result.published} published, ${result.pending} pending automatic or operator review.`;
+    } catch {
+        const text = "Could not confirm automatic review; the staged batch was retained.";
+        hook.pi.logger.warn(text);
+        return text;
     }
 }
