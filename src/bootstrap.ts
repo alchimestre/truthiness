@@ -150,13 +150,18 @@ export function bootstrap(directory: string, revision: string, existing: Set<str
 
 function provenance(note: Note, revision: string) {
     const recorded = { recorded_at: new Date().toISOString(), recorded_by: "bootstrap-source-scanner" };
-    const claimID = `note-${digest(JSON.stringify([revision, note.path, note.excerpt])).slice(0, 20)}`;
-    const evidenceID = `${claimID}-source`;
+    const claimID = `note-${digest(JSON.stringify([note.path, note.excerpt])).slice(0, 20)}`;
+    const evidenceID = `${claimID}-source-${revision.slice(0, 12)}`;
     return [
         { ...recorded, id: claimID, kind: "claim", text: `${note.path}: ${note.excerpt}`, scope: "repo", anchors: [{ path: note.path }], check: null },
         { ...recorded, id: evidenceID, kind: "observation", content: note.excerpt, source_ref: `${revision}:${note.path}`, captured_at: recorded.recorded_at, context: { revision, source_event_id: evidenceID, check_session: `source-${revision}` } },
-        { ...recorded, id: `${claimID}-assessment`, kind: "evidence_for", from: evidenceID, to: claimID, rationale: "Exact source line confirmed", assessment: { outcome: "supports", scope: "repo", revision } },
+        { ...recorded, id: `${evidenceID}-assessment`, kind: "evidence_for", from: evidenceID, to: claimID, rationale: "Exact source line confirmed", assessment: { outcome: "supports", scope: "repo", revision } },
     ];
+}
+
+export function checkedAt(records: Record<string, Record<string, unknown>>, revision: string): boolean {
+    const sessions = new Set([`source-${revision}`, `recheck-${revision}`]);
+    return Object.values(records).some(record => record.kind === "observation" && sessions.has(String((record.context as Record<string, unknown> | undefined)?.check_session)));
 }
 
 export function checkout(directory: string, args: string[]): string | undefined {
