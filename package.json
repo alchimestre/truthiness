@@ -1,0 +1,8 @@
+{
+  "name": "truthiness",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.4",
+  "bin": { "truthiness": "./src/cli.ts" },
+  "scripts": { "truthiness": "bun src/cli.ts", "test": "bun test" }
+}
