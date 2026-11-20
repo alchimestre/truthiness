@@ -112,7 +112,7 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
     const message = { role: "custom", ...startup.message };
     writeFileSync(join(repo, "new-source"), "uncommitted source");
     expect((await handlers.get("context")({ messages: [message] }, ctx)).messages).toEqual([]);
-    expect(await handlers.get("tool_call")({ toolName: "edit" }, ctx)).toEqual({ additionalContext: expect.stringContaining("verify the source") });
+    expect(await handlers.get("tool_call")({ toolName: "edit" }, ctx)).toEqual({ additionalContext: expect.stringContaining("may quote") });
     writeFileSync(join(repo, "source.py"), "def handler(request):\n    return request\n");
     git(repo, "add", "source.py");
     git(repo, "commit", "-m", "Source");
@@ -134,6 +134,10 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
     expect(await submit(verified)).toBe("1 published, 0 pending automatic or operator review.");
     expect(readFileSync(store, "utf8")).toContain('"id":"claim-1"');
     expect(readdirSync(state).filter(file => file.endsWith(".jsonl"))).toHaveLength(2);
+    const edit = (path: string) => handlers.get("tool_call")({ toolName: "edit", input: { path } }, ctx);
+    expect(await edit("source.py")).toEqual({ additionalContext: expect.stringContaining("notes quote source.py") });
+    expect(await edit(join(repo, "unquoted.py"))).toBeUndefined();
+    expect(warnings).toEqual([]);
     await expectRecheckAcrossCommits(repo, store);
 
     await command("off");
@@ -148,7 +152,7 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
     expect(notices.at(-1)).toContain("Unknown argument");
     expect(await handlers.get("tool_call")({ toolName: "edit" }, ctx)).toBeUndefined();
     await command("on");
-    expect(await handlers.get("tool_call")({ toolName: "edit" }, ctx)).toEqual({ additionalContext: expect.stringContaining("verify the source") });
+    expect(await handlers.get("tool_call")({ toolName: "edit" }, ctx)).toEqual({ additionalContext: expect.stringContaining("may quote") });
 }
 
 async function expectRecheckAcrossCommits(repo: string, store: string) {

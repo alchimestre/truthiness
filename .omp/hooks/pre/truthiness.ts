@@ -1,22 +1,43 @@
 import { execFile, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { HookAPI } from "@oh-my-pi/pi-coding-agent/extensibility/hooks";
 import { promisify } from "node:util";
 
 const messageType = "truthiness-index";
 const modeEntry = "truthiness-mode";
-const warning = "Project memory may not apply to this edit. Withhold affected claims and verify the source; this does not block the edit.";
+const unknownTargetWarning = "Truthiness notes may quote the file this edit changes. After the edit, re-read that file before repeating or acting on its notes. The edit is not blocked.";
+const anchorCache = new Map<string, { stamp: string; paths: Set<string> }>();
 const runWorker = promisify(execFile);
 
 function command(program: string, args: string[], cwd: string, input?: string) {
     const result = spawnSync(program, args, { cwd, input, encoding: "utf8", timeout: 5000 });
     if (result.status !== 0) return undefined;
     return result.stdout;
+}
+
+function anchoredWarning(paths: string[]) {
+    return `Truthiness notes quote ${paths.join(", ")}. After this edit, re-read the file before repeating or acting on those notes. The edit is not blocked.`;
+}
+
+function editedPaths(input: Record<string, unknown> | undefined, cwd: string, root: string): string[] {
+    const candidates = [input?.path, ...(Array.isArray(input?.paths) ? input.paths : [])];
+    const realRoot = realPath(root);
+    const paths = candidates.filter((value): value is string => typeof value === "string");
+    return paths.map(value => relative(realRoot, realPath(resolve(cwd, value))));
+}
+
+// A file being created has no realpath yet, so its parent directory is resolved instead.
+function realPath(path: string): string {
+    try {
+        return realpathSync(path);
+    } catch {
+        return dirname(path) === path ? path : join(realPath(dirname(path)), basename(path));
+    }
 }
 
 function cleanHead(cwd: string) {
@@ -97,7 +118,7 @@ export default function truthinessHook(pi: HookAPI): void {
     pi.registerTool({
         name: "truthiness_draft",
         label: "Memory draft",
-        description: "Submit a complete redacted proposal. It is reviewed against committed source immediately; supported claims publish, the rest stay pending.",
+        description: "Submit new notes as store records in JSONL, one per line, with secrets removed. Each note is checked against committed source now: supported notes publish, the rest stay pending.",
         parameters: pi.zod.object({ jsonl: pi.zod.string() }),
         async execute(_id, { jsonl }, _signal, _onUpdate, ctx) {
             if (!enabled) return { content: [{ type: "text", text: "Truthiness is off for this session; nothing was staged." }], details: {} };
@@ -109,7 +130,7 @@ export default function truthinessHook(pi: HookAPI): void {
     });
 
     pi.on("before_agent_start", async (_event, ctx) => {
-        if (!enabled || !tokenizer) return;
+        if (!enabled) return;
         const { store } = memoryPaths(ctx.cwd);
         const head = cleanHead(ctx.cwd);
         if (!store || !head) return;
@@ -126,7 +147,7 @@ export default function truthinessHook(pi: HookAPI): void {
         if (ctx.sessionManager.getBranch().some(entry => entry.type === "custom_message" && entry.customType === messageType && entry.details === key)) return;
         const index = command(program, ["index", store, "", current.head, tokenizer], ctx.cwd);
         if (index === undefined) {
-            pi.logger.warn("Truthiness could not generate the startup index; verify against source.");
+            pi.logger.warn("Truthiness could not generate the startup index.");
             return;
         }
         const after = snapshot(ctx.cwd, store);
@@ -137,7 +158,7 @@ export default function truthinessHook(pi: HookAPI): void {
     pi.on("context", async (event, ctx) => {
         if (!enabled) return { messages: event.messages.filter(message => message.role !== "custom" || message.customType !== messageType) };
         const { store } = memoryPaths(ctx.cwd);
-        const current = tokenizer && store && existsSync(resolve(ctx.cwd, store)) ? snapshot(ctx.cwd, store) : undefined;
+        const current = store && existsSync(resolve(ctx.cwd, store)) ? snapshot(ctx.cwd, store) : undefined;
         const key = current ? `${current.head}:${current.digest}` : undefined;
         let seen = false;
         const messages = event.messages.filter(message => {
@@ -153,13 +174,33 @@ export default function truthinessHook(pi: HookAPI): void {
         if (!enabled || (event.toolName !== "edit" && event.toolName !== "write")) return;
         const { root, store } = memoryPaths(ctx.cwd);
         if (!store || !existsSync(resolve(ctx.cwd, store))) return;
-        const edited = [event.input?.path, ...(Array.isArray(event.input?.paths) ? event.input.paths : [])]
-            .filter((value): value is string => typeof value === "string")
-            .map(value => (root && isAbsolute(value) ? relative(root, value) : value));
-        if (edited.length === 0) return { additionalContext: warning };
-        if (command(program, ["covers", store, ...edited], ctx.cwd) === undefined) return;
-        return { additionalContext: warning };
+        const edited = root ? editedPaths(event.input, ctx.cwd, root) : [];
+        if (edited.length === 0) return { additionalContext: unknownTargetWarning };
+        const anchored = await anchoredPathsOf(resolve(ctx.cwd, store), ctx.cwd);
+        if (!anchored) {
+            pi.logger.warn("Truthiness could not read note anchors; warned on this edit.");
+            return { additionalContext: unknownTargetWarning };
+        }
+        const quoted = edited.filter(path => anchored.has(path));
+        if (quoted.length) return { additionalContext: anchoredWarning(quoted) };
     });
+
+    async function anchoredPathsOf(store: string, cwd: string): Promise<Set<string> | undefined> {
+        const { mtimeMs, size } = statSync(store);
+        const stamp = `${mtimeMs}:${size}`;
+        const cached = anchorCache.get(store);
+        if (cached?.stamp === stamp) return cached.paths;
+        try {
+            const { stdout } = await runWorker(program, ["anchors", store], { cwd, timeout: 5000 });
+            const parsed = JSON.parse(stdout) as { paths?: unknown };
+            if (!Array.isArray(parsed.paths) || !parsed.paths.every(path => typeof path === "string")) return undefined;
+            const paths = new Set(parsed.paths as string[]);
+            anchorCache.set(store, { stamp, paths });
+            return paths;
+        } catch {
+            return undefined;
+        }
+    }
 
     async function stageAndReview(cwd: string, store: string, pendingDirectory: string, draft: string): Promise<string> {
         const path = resolve(cwd, pendingDirectory, `${randomUUID()}.jsonl`);

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { bootstrap, checkedAt, checkout, readBlob } from "./bootstrap.ts";
 import { load, parseProposal, publish, publishAuthorized, stage, type Graph } from "./store.ts";
-import { anchored, index, query } from "./lookup.ts";
+import { anchoredPaths, index, query } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
 import { digest, recheckBatch, review } from "./review.ts";
 
@@ -11,7 +11,7 @@ const maxProposalBytes = 16 * 1024 * 1024;
 
 async function run(args: string[]) {
     const [command, path, ...options] = args;
-    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE TOKENIZER | index STORE SCOPE REVISION TOKENIZER | stage PENDING | bootstrap STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE");
+    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE TOKENIZER | index STORE SCOPE REVISION TOKENIZER | anchors STORE | stage PENDING | bootstrap STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE");
     switch (command) {
         case "validate":
             requireOptions(options, 0);
@@ -38,9 +38,9 @@ async function run(args: string[]) {
             requireOptions(options, 0);
             await stage(path, await readInput());
             return;
-        case "covers":
-            if (options.length === 0) throw new Error("invalid arguments");
-            if (!anchored(await load(path), options)) process.exitCode = 1;
+        case "anchors":
+            requireOptions(options, 0);
+            console.log(JSON.stringify({ paths: [...anchoredPaths(await load(path))].sort() }));
             return;
         case "bootstrap":
             requireOptions(options, 0);

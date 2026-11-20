@@ -42,8 +42,8 @@ Each repository gets its own store under `${XDG_STATE_HOME:-~/.local/state}/trut
 | In a session | Effect |
 | --- | --- |
 | `/truthiness off` / `on` / `status` | Disable or restore startup context, edit warnings and drafting for this session. |
-| `truthiness_draft` tool | Submit a redacted proposal; it is reviewed and published immediately when supported. |
-| Any `edit` or `write` | Adds a reminder to verify affected notes against source. It does not block the edit. |
+| `truthiness_draft` tool | Submit new notes as JSONL store records with secrets removed. Notes supported by committed source publish now; the rest stay pending. |
+| `edit` or `write` on a file a note quotes | Adds a reminder to re-read that file before relying on its notes. An edit with no readable path gets the reminder too. Does not block. |
 
 ## Benchmark
 
@@ -78,7 +78,7 @@ The gate withheld every planted stale note. Resolution showed no measurable diff
 | `truthiness bootstrap STORE` | Once per `HEAD`: add missing declaration and heading notes, then recheck existing notes' quotes. |
 | `truthiness index STORE SCOPE REVISION TOKENIZER` | Print the startup index. Empty `SCOPE` when the task is unknown. |
 | `truthiness query STORE TOKENIZER` | Answer one JSON query from stdin (`id`, `sparse`, `flat` or `graph` mode) within a token budget. |
-| `truthiness covers STORE PATH...` | Exit 0 when a claim anchors one of `PATH`, 1 otherwise. Relative to the repository root. |
+| `truthiness anchors STORE` | Prints `{"paths":[...]}`: repository-relative paths quoted by live claims. Exit 1 and no JSON on error. |
 | `truthiness stage PENDING_FILE` | Save a JSONL batch from stdin to the pending queue. |
 | `truthiness review-pending STORE PENDING_FILE` | Verify a staged batch against `HEAD`, publish what holds, print `{"published": N, "pending": M}`. Leaves the staged file unchanged. |
 | `truthiness publish STORE DIGEST` | Publish a reviewed batch from stdin; `DIGEST` is the SHA-256 of the reviewed bytes. |

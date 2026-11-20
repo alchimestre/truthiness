@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseProposal } from "./store.ts";
+import { digest } from "./review.ts";
 
 type Note = { path: string; excerpt: string };
 type Blob = { path: string; oid: string; size: number };
@@ -12,6 +12,8 @@ const scanned = /\.(?:py|pyi|ts|tsx|js|jsx|go|rs|md|rst|toml)$/;
 const declaration = /^(?:export\s+)?(?:async\s+)?(?:def|class|function|func|fn|interface|type)\s+\w/;
 const heading = /^#{1,4}\s+\S/;
 const maxNotes = 300;
+const minExcerpt = 8;
+const maxExcerpt = 160;
 
 function sourceFiles(directory: string, revision: string) {
     const tree = checkout(directory, ["ls-tree", "-rlz", "--full-tree", revision]);
@@ -81,7 +83,7 @@ function notesIn(path: string, content: string, leads?: Set<string>): Note[] {
     const counts = new Map<string, number>();
     for (const line of content.split("\n")) {
         const excerpt = line.trim();
-        if (excerpt.length < 8 || excerpt.length > 160 || /[\p{Cc}\p{Cf}]/u.test(excerpt)) continue;
+        if (excerpt.length < minExcerpt || excerpt.length > maxExcerpt || /[\p{Cc}\p{Cf}]/u.test(excerpt)) continue;
         if (leads?.has(excerpt) || declaration.test(excerpt) || heading.test(excerpt)) {
             counts.set(excerpt, (counts.get(excerpt) ?? 0) + 1);
         }
@@ -127,7 +129,7 @@ function collectLeads(text: string, tracked: Set<string>, leads: Leads) {
         if (!citation) continue;
         const path = citation[1].replace(/^\.\//, "");
         const excerpt = citation[2].trim().replace(/^`(.*)`$/, "$1");
-        if (excerpt.length <= 160) leads.get(path)?.add(excerpt);
+        if (excerpt.length <= maxExcerpt) leads.get(path)?.add(excerpt);
     }
 }
 
@@ -174,6 +176,3 @@ export function readBlob(directory: string, revision: string, path: string): str
     return checkout(directory, ["cat-file", "blob", `${revision}:${path}`]);
 }
 
-function digest(text: string): string {
-    return createHash("sha256").update(text).digest("hex");
-}
