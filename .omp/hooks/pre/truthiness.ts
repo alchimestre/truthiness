@@ -1,12 +1,15 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { HookAPI } from "@oh-my-pi/pi-coding-agent/extensibility/hooks";
+import { promisify } from "node:util";
 
 const messageType = "truthiness-index";
 const modeEntry = "truthiness-mode";
 const warning = "Project memory may not apply to this edit. Withhold affected claims and verify the source; this does not block the edit.";
+const runWorker = promisify(execFile);
 
 function command(program: string, args: string[], cwd: string, input?: string) {
     const result = spawnSync(program, args, { cwd, input, encoding: "utf8", timeout: 5000 });
@@ -14,10 +17,12 @@ function command(program: string, args: string[], cwd: string, input?: string) {
     return result.stdout;
 }
 
-function snapshot(cwd: string, store: string) {
-    const state = command("git", ["status", "--porcelain", "--untracked-files=all"], cwd);
-    if (state !== "") return undefined;
-    const head = command("git", ["rev-parse", "HEAD"], cwd)?.trim();
+function cleanHead(cwd: string) {
+    if (command("git", ["status", "--porcelain", "--untracked-files=all"], cwd) !== "") return undefined;
+    return command("git", ["rev-parse", "HEAD"], cwd)?.trim();
+}
+
+function snapshot(cwd: string, store: string, head = cleanHead(cwd)) {
     if (!head) return undefined;
     try {
         const digest = createHash("sha256").update(readFileSync(resolve(cwd, store))).digest("hex");
@@ -35,7 +40,6 @@ export default function truthinessHook(pi: HookAPI): void {
     if (!program || !store) return;
     const drafts = new Map<string, string>();
     let enabled = true;
-    registerPublication(pi, program, store);
 
     const restoreMode = (ctx: { sessionManager: { getBranch(): Array<{ type: string; customType?: string; data?: unknown }> } }) => {
         for (const entry of ctx.sessionManager.getBranch()) {
@@ -81,23 +85,35 @@ export default function truthinessHook(pi: HookAPI): void {
     pi.registerTool({
         name: "truthiness_draft",
         label: "Memory draft",
-        description: "Hold one complete proposal batch in session memory, or stage an urgent correction for independent review. Never publishes.",
+        description: "Hold a complete redacted proposal for automatic review at closeout, or send it for automatic review now. Unverified claims remain pending without prompting the user.",
         parameters: pi.zod.object({ jsonl: pi.zod.string(), early: pi.zod.boolean() }),
         async execute(_id, { jsonl, early }, _signal, _onUpdate, ctx) {
             if (!enabled) return { content: [{ type: "text", text: "Truthiness is off for this session; nothing was held or staged." }], details: {} };
-            const staged = early && stage(ctx.cwd, jsonl);
-            if (!early) drafts.set(ctx.sessionManager.getSessionId(), jsonl);
+            if (!pending) return { content: [{ type: "text", text: "No pending directory is configured." }], details: {}, isError: true };
+            if (early) {
+                const text = await stageAndReview(ctx.cwd, pending, jsonl);
+                return { content: [{ type: "text", text }], details: {} };
+            }
+            drafts.set(ctx.sessionManager.getSessionId(), jsonl);
             return {
-                content: [{ type: "text", text: early ? (staged ? "Pending independent review." : "Could not stage; proposal not published.") : "Draft held until closeout." }],
+                content: [{ type: "text", text: "Draft held for automatic review at closeout." }],
                 details: {},
-                isError: early && !staged,
             };
         },
     });
 
     pi.on("before_agent_start", async (_event, ctx) => {
         if (!enabled || !tokenizer) return;
-        const current = snapshot(ctx.cwd, store);
+        const head = cleanHead(ctx.cwd);
+        if (!head) return;
+        if (process.env.TRUTHINESS_BOOTSTRAP !== "off") {
+            try {
+                await runWorker(program, ["bootstrap", store], { cwd: ctx.cwd, timeout: 15_000 });
+            } catch {
+                pi.logger.warn("Truthiness could not bootstrap project memory.");
+            }
+        }
+        const current = snapshot(ctx.cwd, store, head);
         if (!current) return;
         const key = `${current.head}:${current.digest}`;
         if (ctx.sessionManager.getBranch().some(entry => entry.type === "custom_message" && entry.customType === messageType && entry.details === key)) return;
@@ -134,30 +150,31 @@ export default function truthinessHook(pi: HookAPI): void {
         const id = ctx.sessionManager.getSessionId();
         const draft = drafts.get(id);
         if (draft === undefined) return;
-        if (enabled && !stage(ctx.cwd, draft)) pi.logger.warn("Project memory closeout did not stage the draft.");
+        if (enabled && pending) await stageAndReview(ctx.cwd, pending, draft);
         drafts.delete(id);
     });
 
-    function stage(cwd: string, draft: string): boolean {
-        if (!pending) return false;
-        const path = resolve(cwd, pending, `${randomUUID()}.jsonl`);
-        return command(program, ["stage", path], cwd, draft) !== undefined;
+    async function stageAndReview(cwd: string, pendingDirectory: string, draft: string): Promise<string> {
+        const path = resolve(cwd, pendingDirectory, `${randomUUID()}.jsonl`);
+        if (command(program, ["stage", path], cwd, draft) === undefined) {
+            const text = "Could not confirm staging; nothing was sent for automatic review.";
+            pi.logger.warn(text);
+            return text;
+        }
+        try {
+            const { stdout } = await runWorker(program, ["review-pending", store, path], { cwd, timeout: 40_000 });
+            const result = JSON.parse(stdout) as { published: number; pending: number };
+            if (!Number.isSafeInteger(result.published) || result.published < 0 || !Number.isSafeInteger(result.pending) || result.pending < 0) {
+                throw new Error("invalid review outcome");
+            }
+            if (result.pending === 0 && result.published > 0) {
+                await unlink(path).catch(() => pi.logger.warn("Truthiness published the batch but could not remove its staged copy."));
+            }
+            return `${result.published} published, ${result.pending} pending automatic or operator review.`;
+        } catch {
+            const text = "Could not confirm automatic review; the staged batch was retained.";
+            pi.logger.warn(text);
+            return text;
+        }
     }
-}
-
-function registerPublication(pi: HookAPI, program: string, store: string): void {
-    pi.registerTool({
-        name: "truthiness_publish",
-        label: "Publish reviewed memory",
-        description: "Publish an independently reviewed empirical batch to shared memory. Supply the exact reviewed JSONL and its SHA-256 digest. Do not publish from the proposing session. Axioms require separate human authorization.",
-        parameters: pi.zod.object({ jsonl: pi.zod.string(), digest: pi.zod.string() }),
-        async execute(_id, { jsonl, digest }, _signal, _onUpdate, ctx) {
-            const published = command(program, ["publish", store, digest], ctx.cwd, jsonl) !== undefined;
-            return {
-                content: [{ type: "text", text: published ? "Published reviewed batch." : "Could not confirm publication; check the canonical store before retrying." }],
-                details: {},
-                isError: !published,
-            };
-        },
-    });
 }
