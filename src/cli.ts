@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { bootstrap, checkedAt, checkout, readBlob } from "./bootstrap.ts";
 import { load, parseProposal, publish, publishAuthorized, stage, type Graph } from "./store.ts";
-import { index, query } from "./lookup.ts";
+import { anchored, index, query } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
 import { digest, recheckBatch, review } from "./review.ts";
 
@@ -37,6 +37,10 @@ async function run(args: string[]) {
         case "stage":
             requireOptions(options, 0);
             await stage(path, await readInput());
+            return;
+        case "covers":
+            if (options.length === 0) throw new Error("invalid arguments");
+            if (!anchored(await load(path), options)) process.exitCode = 1;
             return;
         case "bootstrap":
             requireOptions(options, 0);

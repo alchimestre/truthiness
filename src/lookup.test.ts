@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { index, query, type Records, type Request } from "./lookup.ts";
+import { anchored, index, query, type Records, type Request } from "./lookup.ts";
 
 function records(outcome = "supports", scope = "service A", revision = "abc"): Records {
   return {
@@ -99,5 +99,17 @@ describe("lookup index", () => {
     expect(output).toContain("Omitted eligible entries");
     expect(output.split("\n").filter(Boolean).length).toBeLessThanOrEqual(60);
     expect(() => index(records(), "service A", "abc", () => -1)).toThrow("token counter failed");
+  });
+});
+
+describe("anchor matching", () => {
+  test("matches only claims that anchor an edited path", () => {
+    const data = records();
+    data.claim.anchors = [{ path: "src/review.ts" }, { path: "src/memory.ts", symbol: "load" }];
+    expect(anchored(data, ["src/review.ts"])).toBe(true);
+    expect(anchored(data, ["src/memory.ts"])).toBe(true);
+    expect(anchored(data, ["src/lookup.ts"])).toBe(false);
+    expect(anchored(data, ["src/review.ts.bak"])).toBe(false);
+    expect(anchored({}, ["src/review.ts"])).toBe(false);
   });
 });

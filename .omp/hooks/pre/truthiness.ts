@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { HookAPI } from "@oh-my-pi/pi-coding-agent/extensibility/hooks";
 import { promisify } from "node:util";
@@ -42,6 +42,7 @@ function memoryPaths(cwd: string) {
     const stateHome = process.env.XDG_STATE_HOME || join(homedir(), ".local", "state");
     const repository = root && join(stateHome, "truthiness", `${basename(root)}-${createHash("sha256").update(root).digest("hex").slice(0, 12)}`);
     return {
+        root,
         store: process.env.TRUTHINESS_STORE || (repository && join(repository, "canonical.jsonl")),
         pending: process.env.TRUTHINESS_PENDING || (repository && join(repository, "pending")),
     };
@@ -150,8 +151,14 @@ export default function truthinessHook(pi: HookAPI): void {
 
     pi.on("tool_call", async (event, ctx) => {
         if (!enabled || (event.toolName !== "edit" && event.toolName !== "write")) return;
-        const { store } = memoryPaths(ctx.cwd);
-        if (store && existsSync(resolve(ctx.cwd, store))) return { additionalContext: warning };
+        const { root, store } = memoryPaths(ctx.cwd);
+        if (!store || !existsSync(resolve(ctx.cwd, store))) return;
+        const edited = [event.input?.path, ...(Array.isArray(event.input?.paths) ? event.input.paths : [])]
+            .filter((value): value is string => typeof value === "string")
+            .map(value => (root && isAbsolute(value) ? relative(root, value) : value));
+        if (edited.length === 0) return { additionalContext: warning };
+        if (command(program, ["covers", store, ...edited], ctx.cwd) === undefined) return;
+        return { additionalContext: warning };
     });
 
     async function stageAndReview(cwd: string, store: string, pendingDirectory: string, draft: string): Promise<string> {
