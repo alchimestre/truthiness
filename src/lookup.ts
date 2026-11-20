@@ -95,6 +95,12 @@ function makeResult(matches: Match[], capped: string[]): Result {
 }
 
 
+export function anchored(records: Records, paths: string[]): boolean {
+  const wanted = new Set(paths);
+  return Object.values(records).some(record => Array.isArray(record.anchors) &&
+    record.anchors.some(anchor => Boolean(anchor) && typeof anchor === "object" && wanted.has(String((anchor as Record<string, unknown>).path))));
+}
+
 function sparseIDs(records: Records, request: Request): string[] {
   const queryTerms = new Set((request.query ?? "").toLowerCase().match(/[\p{L}\p{N}_./-]+/gu) ?? []);
   return Object.entries(records).map(([id, record]) => {

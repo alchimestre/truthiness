@@ -78,6 +78,7 @@ The gate withheld every planted stale note. Resolution showed no measurable diff
 | `truthiness bootstrap STORE` | Once per `HEAD`: add missing declaration and heading notes, then recheck existing notes' quotes. |
 | `truthiness index STORE SCOPE REVISION TOKENIZER` | Print the startup index. Empty `SCOPE` when the task is unknown. |
 | `truthiness query STORE TOKENIZER` | Answer one JSON query from stdin (`id`, `sparse`, `flat` or `graph` mode) within a token budget. |
+| `truthiness covers STORE PATH...` | Exit 0 when a claim anchors one of `PATH`, 1 otherwise. Relative to the repository root. |
 | `truthiness stage PENDING_FILE` | Save a JSONL batch from stdin to the pending queue. |
 | `truthiness review-pending STORE PENDING_FILE` | Verify a staged batch against `HEAD`, publish what holds, print `{"published": N, "pending": M}`. Leaves the staged file unchanged. |
 | `truthiness publish STORE DIGEST` | Publish a reviewed batch from stdin; `DIGEST` is the SHA-256 of the reviewed bytes. |
