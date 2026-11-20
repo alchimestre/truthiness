@@ -94,11 +94,20 @@ function makeResult(matches: Match[], capped: string[]): Result {
   return { state, matches, ...(capped.length ? { incomplete: true, capped_by: capped } : {}) };
 }
 
-
-export function anchored(records: Records, paths: string[]): boolean {
-  const wanted = new Set(paths);
-  return Object.values(records).some(record => Array.isArray(record.anchors) &&
-    record.anchors.some(anchor => Boolean(anchor) && typeof anchor === "object" && wanted.has(String((anchor as Record<string, unknown>).path))));
+// Superseded claims and claims a typed assessment disproves are never shown, so editing their files needs no warning.
+export function anchoredPaths(records: Records): Set<string> {
+  const retired = new Set<string>();
+  for (const record of Object.values(records)) {
+    if (text(record, "kind") === "supersedes") retired.add(text(record, "to"));
+    if (text(record, "kind") === "evidence_for" && text(object(record.assessment), "outcome") === "disproves") retired.add(text(record, "to"));
+  }
+  const paths = new Set<string>();
+  for (const [id, record] of Object.entries(records)) {
+    if (text(record, "kind") !== "claim" || retired.has(id) || !Array.isArray(record.anchors)) continue;
+    for (const anchor of record.anchors) paths.add(text(object(anchor), "path"));
+  }
+  paths.delete("");
+  return paths;
 }
 
 function sparseIDs(records: Records, request: Request): string[] {

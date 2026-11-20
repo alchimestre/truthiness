@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { anchored, index, query, type Records, type Request } from "./lookup.ts";
+import { anchoredPaths, index, query, type Records, type Request } from "./lookup.ts";
 
 function records(outcome = "supports", scope = "service A", revision = "abc"): Records {
   return {
@@ -102,14 +102,18 @@ describe("lookup index", () => {
   });
 });
 
-describe("anchor matching", () => {
-  test("matches only claims that anchor an edited path", () => {
-    const data = records();
-    data.claim.anchors = [{ path: "src/review.ts" }, { path: "src/memory.ts", symbol: "load" }];
-    expect(anchored(data, ["src/review.ts"])).toBe(true);
-    expect(anchored(data, ["src/memory.ts"])).toBe(true);
-    expect(anchored(data, ["src/lookup.ts"])).toBe(false);
-    expect(anchored(data, ["src/review.ts.bak"])).toBe(false);
-    expect(anchored({}, ["src/review.ts"])).toBe(false);
+describe("anchored paths", () => {
+  test("lists paths of live claims only", () => {
+    const claim = (path: string) => ({ kind: "claim", anchors: [{ path }] });
+    const data: Records = {
+      live: claim("src/review.ts"),
+      superseded: claim("src/old.ts"),
+      disproved: claim("src/wrong.ts"),
+      axiom: { kind: "axiom", anchors: [{ path: "src/axiom.ts" }] },
+      replacement: { kind: "supersedes", from: "live", to: "superseded" },
+      refutation: { kind: "evidence_for", to: "disproved", assessment: { outcome: "disproves" } },
+    };
+    expect([...anchoredPaths(data)]).toEqual(["src/review.ts"]);
+    expect(anchoredPaths({}).size).toBe(0);
   });
 });
