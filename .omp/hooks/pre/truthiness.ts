@@ -5,7 +5,7 @@ import { unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { HookAPI } from "@oh-my-pi/pi-coding-agent/extensibility/hooks";
+import type { ExtensionAPI, ToolCallEvent } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
 import { promisify } from "node:util";
 
 const messageType = "truthiness-index";
@@ -24,11 +24,14 @@ function anchoredWarning(paths: string[]) {
     return `Truthiness notes quote ${paths.join(", ")}. After this edit, re-read the file before repeating or acting on those notes. The edit is not blocked.`;
 }
 
-function editedPaths(input: Record<string, unknown> | undefined, cwd: string, root: string): string[] {
-    const candidates = [input?.path, ...(Array.isArray(input?.paths) ? input.paths : [])];
+function editedPaths(input: ToolCallEvent["input"] | undefined, cwd: string, root: string): string[] {
+    if (!input || typeof input !== "object") return [];
+    const path = "path" in input ? input.path : undefined;
+    const paths = "paths" in input ? input.paths : undefined;
+    const candidates = [path, ...(Array.isArray(paths) ? paths : [])];
     const realRoot = realPath(root);
-    const paths = candidates.filter((value): value is string => typeof value === "string");
-    return paths.map(value => relative(realRoot, realPath(resolve(cwd, value))));
+    const targets = candidates.filter((value): value is string => typeof value === "string");
+    return targets.map(value => relative(realRoot, realPath(resolve(cwd, value))));
 }
 
 // A file being created has no realpath yet, so its parent directory is resolved instead.
@@ -72,6 +75,9 @@ function memoryPaths(cwd: string) {
 type Entry = { type: string; customType?: string; data?: unknown; details?: unknown };
 type Session = { cwd: string; sessionManager: { getBranch(): Entry[] } };
 type Message = { role: string; customType?: string; details?: unknown };
+type HookAPI = Pick<ExtensionAPI, "appendEntry" | "on" | "registerCommand" | "registerTool" | "zod"> & {
+    logger: Pick<ExtensionAPI["logger"], "warn">;
+};
 type Hook = { pi: HookAPI; program: string; tokenizer: string; enabled: boolean };
 
 export default function truthinessHook(pi: HookAPI): void {
@@ -82,9 +88,9 @@ export default function truthinessHook(pi: HookAPI): void {
         enabled: true,
     };
     registerModeCommand(hook);
-    for (const event of ["session_start", "session_tree", "session_compact"] as const) {
-        pi.on(event, async (_event, ctx) => restoreMode(hook, ctx));
-    }
+    pi.on("session_start", async (_event, ctx) => restoreMode(hook, ctx));
+    pi.on("session_tree", async (_event, ctx) => restoreMode(hook, ctx));
+    pi.on("session_compact", async (_event, ctx) => restoreMode(hook, ctx));
     registerDraftTool(hook);
     pi.on("before_agent_start", async (_event, ctx) => startupIndex(hook, ctx));
     pi.on("context", async (event, ctx) => ({ messages: currentIndexOnly(hook, event.messages, ctx.cwd) }));
@@ -174,7 +180,7 @@ function currentIndexOnly<T extends Message>(hook: Hook, messages: T[], cwd: str
     });
 }
 
-async function editWarning(hook: Hook, event: { toolName: string; input?: Record<string, unknown> }, cwd: string) {
+async function editWarning(hook: Hook, event: ToolCallEvent, cwd: string) {
     if (!hook.enabled || (event.toolName !== "edit" && event.toolName !== "write")) return;
     const { root, store } = memoryPaths(cwd);
     if (!store || !existsSync(resolve(cwd, store))) return;
