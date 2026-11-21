@@ -4,5 +4,10 @@
   "type": "module",
   "packageManager": "bun@1.4.4",
   "bin": { "truthiness": "./src/cli.ts" },
-  "scripts": { "truthiness": "bun src/cli.ts", "test": "bun test" }
+  "scripts": { "truthiness": "bun src/cli.ts", "test": "bun test", "typecheck": "tsc" },
+  "devDependencies": {
+    "@oh-my-pi/pi-coding-agent": "19.0.1",
+    "@types/bun": "1.4.4",
+    "typescript": "5.9.3"
+  }
 }

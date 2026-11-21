@@ -125,6 +125,20 @@ The reviewer reads one JSON object on stdin and prints a JSON array of supported
 
 ## Development
 
-```sh
-bun test
-```
+1. Install the pinned development dependencies:
+
+   ```sh
+   bun install --frozen-lockfile
+   ```
+
+2. Type-check the source, tests and OMP hook without emitting JavaScript:
+
+   ```sh
+   bun run typecheck
+   ```
+
+3. Run the tests:
+
+   ```sh
+   bun test
+   ```

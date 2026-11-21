@@ -348,7 +348,8 @@ async function atomicWrite(path: string, data: Buffer): Promise<void> {
 function canonical(value: unknown): string {
     if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
     if (value && typeof value === "object") {
-        return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
+        const fields = value as Record<string, unknown>;
+        return `{${Object.keys(fields).sort().map(key => `${JSON.stringify(key)}:${canonical(fields[key])}`).join(",")}}`;
     }
     return JSON.stringify(value) ?? "null";
 }

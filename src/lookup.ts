@@ -5,7 +5,7 @@ export type Request = {
   mode: "id" | "sparse" | "flat" | "graph";
   query?: string;
   id?: string;
-
+  scope?: string;
   revision?: string;
   edge?: "evidence" | "dependencies" | "conflict" | "history";
   direction?: "predecessors" | "successors";

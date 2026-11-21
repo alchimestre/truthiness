@@ -57,7 +57,8 @@ describe("lookup query", () => {
   });
 
   test("rejects unsupported modes and traversal hops distinctly", () => {
-    expect(query(records(), { mode: "guess" } as Request).state).toBe("invalid_request");
+    const invalidRequest = { ...request(), mode: "guess" };
+    expect(query(records(), invalidRequest as Request).state).toBe("invalid_request");
     expect(query(records(), request({ mode: "graph", edge: "evidence", hops: 3 })).state).toBe("invalid_request");
   });
 

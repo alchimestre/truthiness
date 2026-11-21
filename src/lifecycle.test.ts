@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import truthinessHook from "../.omp/hooks/pre/truthiness.ts";
 
+const zod = { object: () => null, string: () => null } as unknown as Parameters<typeof truthinessHook>[0]["zod"];
+
 const executable = fileURLToPath(new URL("./cli.ts", import.meta.url));
 
 function git(cwd: string, ...args: string[]) {
@@ -66,9 +68,10 @@ test("keeps a separate default store per repository and stays silent outside one
             on: (name, handler) => handlers.set(name, handler),
             registerTool: () => {},
             registerCommand: () => {},
-            zod: { object: () => null, string: () => null, boolean: () => null },
+            appendEntry: () => {},
+            zod,
             logger: { warn: () => {} },
-        } as Parameters<typeof truthinessHook>[0]);
+        });
         const session = (cwd: string) => ({ cwd, sessionManager: { getBranch: () => [] } });
         for (const [position, repo] of repos.entries()) {
             const startup = await handlers.get("before_agent_start")({}, session(repo));
@@ -90,9 +93,8 @@ test("keeps a separate default store per repository and stays silent outside one
 
 async function exerciseLifecycle(repo: string, state: string, store: string) {
     const handlers = new Map();
-    const branch = [];
+    const branch: Array<{ type: string; customType: string; data?: unknown }> = [];
     const ctx = { cwd: repo, sessionManager: { getBranch: () => branch, getSessionId: () => "session" } };
-    const builder = { object: () => null, string: () => null, boolean: () => null };
     const notices: string[] = [];
     const warnings: string[] = [];
     const command = (args: string) => handlers.get("truthiness")(args, { ...ctx, ui: { notify: (message: string) => notices.push(message) } });
@@ -101,9 +103,9 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
         registerTool: tool => handlers.set(tool.name, tool.execute),
         registerCommand: (name, command) => handlers.set(name, command.handler),
         appendEntry: (type, data) => { branch.push({ type: "custom", customType: type, data }); },
-        zod: builder,
+        zod,
         logger: { warn: (message: string) => { warnings.push(message); } },
-    } as Parameters<typeof truthinessHook>[0]);
+    });
     const startup = await handlers.get("before_agent_start")({}, ctx);
     expect(startup.message.content).toContain("README.md: # Parser guide");
     const seeded = readFileSync(store, "utf8");
