@@ -103,7 +103,7 @@ An integration runs three CLI commands at the right moments:
 | The agent proposes notes | Remove secrets from the notes, then pipe them to `truthiness stage PENDING_FILE` and run `truthiness review-pending STORE PENDING_FILE` | Notes whose quote is found at `HEAD` are published; the rest stay pending. |
 | The agent edits a file | `truthiness anchors STORE` lists the files that notes quote | If the file is listed, remind the agent to re-read it. |
 
-A proposed note is three JSONL records: a `claim` (the fact), an `observation` (the quoted line and the commit it came from) and an `evidence_for` linking them. The allowed fields for each kind are in `recordFields` in `src/store.ts`; `truthiness bootstrap` writes examples into the store. The secret check before publishing is partial, so the integration must remove secrets itself.
+A proposed note is three JSONL records: a `claim` (the fact), an `observation` (the quoted line and the commit it came from) and an `evidence_for` linking them. `batch()` in `src/review.test.ts` builds a complete, valid example. The secret check before publishing is partial, so the integration must remove secrets itself.
 
 Keep `STORE` and `PENDING_FILE` outside the repository, one pair per repository.
 
@@ -226,13 +226,21 @@ The tokenizer is any command that reads text on stdin and prints a token count. 
 
 ### Reviewer
 
-Exact quotes need no reviewer. To accept other notes, set `TRUTHINESS_REVIEWER` to a command. It reads one JSON object on stdin and prints a JSON array of accepted candidate IDs:
+Exact quotes need no reviewer. To accept other notes, set `TRUTHINESS_REVIEWER` to the path of an executable. It reads one JSON object on stdin and must print, within 30 seconds, a JSON array of accepted candidate IDs:
 
 ```json
 {"rubric":"...","candidates":[{"id":"...","text":"...","scope":"...","anchors":[{"path":"...","symbol":"..."}],"excerpts":[{"path":"...","text":"..."}]}],"sources":[{"path":"...","text":"..."}]}
 ```
 
-`sources` holds whole committed files. A note stays pending if its source contains a detectable secret, the request exceeds 16 KiB, or the reviewer gives no valid answer. The secret scan is not complete, so use a local reviewer if code must not leave the machine. Corrections to existing notes and axioms never go through the reviewer. `scripts/truthiness-reviewer.sh` is an example reviewer that calls OMP; `TRUTHINESS_OMP_REVIEW_MODEL` picks its model.
+`sources` holds whole committed files. A note stays pending if its source contains a detectable secret, the request exceeds 16 KiB, or the reviewer gives no valid answer. The secret scan is not complete, so use a local model if code must not leave the machine. Corrections to existing notes and axioms never go through the reviewer.
+
+`scripts/truthiness-reviewer.sh` works with any model CLI. Set `TRUTHINESS_REVIEW_COMMAND` to a command that reads a prompt on stdin and prints the reply. Give the model no tools: the source it reads is untrusted.
+
+```sh
+export TRUTHINESS_REVIEWER=/path/to/truthiness/scripts/truthiness-reviewer.sh
+export TRUTHINESS_REVIEW_COMMAND='llm'
+# or: TRUTHINESS_REVIEW_COMMAND='omp --print --no-session --no-tools --no-extensions --no-rules --no-context-files --no-skills --no-prewalk --no-title --thinking off'
+```
 
 ## Limits
 
