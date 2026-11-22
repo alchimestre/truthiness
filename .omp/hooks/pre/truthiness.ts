@@ -84,7 +84,7 @@ export default function truthinessHook(pi: HookAPI): void {
     const hook: Hook = {
         pi,
         program: process.env.TRUTHINESS_COMMAND || fileURLToPath(new URL("../../../src/cli.ts", import.meta.url)),
-        tokenizer: process.env.TRUTHINESS_TOKENIZER || fileURLToPath(new URL("../../truthiness-tokenizer.sh", import.meta.url)),
+        tokenizer: process.env.TRUTHINESS_TOKENIZER || fileURLToPath(new URL("../../../scripts/truthiness-tokenizer.sh", import.meta.url)),
         enabled: true,
     };
     registerModeCommand(hook);
