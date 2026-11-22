@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="title desc">
   <title id="title">Truthiness: project memory for coding agents</title>
-  <desc id="desc">Notes reach the agent only while their quote still exists at HEAD. A startup index lists two notes as shown and one example note as withheld because its quote is gone.</desc>
+  <desc id="desc">Each note is tied to a line of code. Change the line and the agent stops seeing the note. A panel lists what the agent sees: two notes whose line is unchanged, and one example note hidden because its line was changed.</desc>
 
   <rect width="1200" height="400" rx="24" fill="#0E1116"/>
 
@@ -8,14 +8,14 @@
     <text x="64" y="96" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" letter-spacing="2" fill="#8B93A0">PROJECT MEMORY FOR CODING AGENTS</text>
     <text x="64" y="190" font-size="96" font-weight="700" fill="#F2EFE8">Truthiness</text>
     <rect x="64" y="212" width="96" height="6" rx="3" fill="#56D364"/>
-    <text x="64" y="268" font-size="28" fill="#F2EFE8">Notes reach the agent only while</text>
-    <text x="64" y="304" font-size="28" fill="#F2EFE8">their quote still exists at HEAD.</text>
+    <text x="64" y="268" font-size="28" fill="#F2EFE8">Each note is tied to a line of code.</text>
+    <text x="64" y="304" font-size="28" fill="#F2EFE8">Change the line, the note is hidden.</text>
     <text x="64" y="354" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#8B93A0">experimental · git + Bun CLI · any agent</text>
   </g>
 
   <g id="startup-index" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
     <rect x="640" y="50" width="496" height="300" rx="14" fill="#151A21" stroke="#2A313B" stroke-width="2"/>
-    <text x="668" y="90" font-size="18" fill="#8B93A0">startup index @ HEAD</text>
+    <text x="668" y="90" font-size="18" fill="#8B93A0">what the agent sees</text>
     <line x1="640" y1="106" x2="1136" y2="106" stroke="#2A313B" stroke-width="2"/>
 
     <g id="row-shown-1">
@@ -37,7 +37,7 @@
     <g id="row-withheld">
       <path d="M660 288 l16 16 M676 288 l-16 16" fill="none" stroke="#F0883E" stroke-width="4" stroke-linecap="round"/>
       <text x="712" y="288" font-size="18" fill="#8B93A0">config.py</text>
-      <text x="1112" y="288" font-size="18" fill="#F0883E" text-anchor="end">withheld · example</text>
+      <text x="1112" y="288" font-size="18" fill="#F0883E" text-anchor="end">hidden · example</text>
       <text x="712" y="316" font-size="20" fill="#8B93A0">def parse_config(path):</text>
       <line x1="712" y1="310" x2="989" y2="310" stroke="#F0883E" stroke-width="2"/>
     </g>
