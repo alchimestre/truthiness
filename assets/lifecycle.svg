@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="380" viewBox="0 0 1200 380" role="img" aria-labelledby="title desc">
+  <title id="title">Note lifecycle</title>
+  <desc id="desc">Three stages across three commits. Pin: a note is stored with a verbatim quote and publishes only if the quote is found at HEAD. Show: at the next commit the quote is still there, so the note reaches the agent. Withhold: at a later commit the quote is gone, so the note is withheld.</desc>
+
+  <rect width="1200" height="380" rx="24" fill="#0E1116"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <g id="stage-pin" transform="translate(48 40)">
+      <rect width="340" height="300" rx="14" fill="#151A21" stroke="#2A313B" stroke-width="2"/>
+      <text x="24" y="54" font-size="32" font-weight="700" fill="#F2EFE8">1  Pin</text>
+      <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#8B93A0">commit A, note drafted</text>
+      <rect x="16" y="106" width="308" height="88" rx="10" fill="#0E1116" stroke="#2A313B" stroke-width="2"/>
+      <text x="28" y="136" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#8B93A0">config.py</text>
+      <text x="28" y="170" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" fill="#F2EFE8">def parse_config(path):</text>
+      <circle cx="298" cy="130" r="8" fill="none" stroke="#8B93A0" stroke-width="3"/>
+      <text x="24" y="232" font-size="22" font-weight="700" fill="#F2EFE8">Published only if the</text>
+      <text x="24" y="262" font-size="22" font-weight="700" fill="#F2EFE8">quote is found at HEAD.</text>
+    </g>
+
+    <g id="stage-show" transform="translate(430 40)">
+      <rect width="340" height="300" rx="14" fill="#151A21" stroke="#2A313B" stroke-width="2"/>
+      <text x="24" y="54" font-size="32" font-weight="700" fill="#F2EFE8">2  Show</text>
+      <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#8B93A0">commit B, same code</text>
+      <rect x="16" y="106" width="308" height="88" rx="10" fill="#0E1116" stroke="#2A313B" stroke-width="2"/>
+      <text x="28" y="136" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#8B93A0">config.py</text>
+      <text x="28" y="170" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" fill="#F2EFE8">def parse_config(path):</text>
+      <path d="M289 131 l6 7 l12 -14" fill="none" stroke="#56D364" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="24" y="232" font-size="22" font-weight="700" fill="#56D364">Quote found at HEAD:</text>
+      <text x="24" y="262" font-size="22" font-weight="700" fill="#F2EFE8">note reaches the agent.</text>
+    </g>
+
+    <g id="stage-withhold" transform="translate(812 40)">
+      <rect width="340" height="300" rx="14" fill="#151A21" stroke="#2A313B" stroke-width="2"/>
+      <text x="24" y="54" font-size="32" font-weight="700" fill="#F2EFE8">3  Withhold</text>
+      <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#8B93A0">commit C, code moved</text>
+      <rect x="16" y="106" width="308" height="88" rx="10" fill="#0E1116" stroke="#2A313B" stroke-width="2"/>
+      <text x="28" y="136" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#8B93A0">config.py</text>
+      <text x="28" y="170" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" fill="#8B93A0">def parse_config(path):</text>
+      <line x1="28" y1="164" x2="305" y2="164" stroke="#F0883E" stroke-width="2"/>
+      <path d="M290 122 l16 16 M306 122 l-16 16" fill="none" stroke="#F0883E" stroke-width="4" stroke-linecap="round"/>
+      <text x="24" y="232" font-size="22" font-weight="700" fill="#F0883E">Quote gone at HEAD:</text>
+      <text x="24" y="262" font-size="22" font-weight="700" fill="#F2EFE8">note is withheld.</text>
+    </g>
+  </g>
+
+  <g id="arrows" fill="none" stroke="#8B93A0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M398 110 L420 110 M414 103 L421 110 L414 117"/>
+    <path d="M780 110 L802 110 M796 103 L803 110 L796 117"/>
+  </g>
+</svg>
