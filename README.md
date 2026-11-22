@@ -20,7 +20,7 @@ Truthiness treats every note as a claim that needs proof:
 | Evidence expires | At every commit, each note's line is looked up again. If it is gone, the note is hidden. |
 | Knowledge accumulates | Notes that pass are kept across sessions, so each session starts with what earlier ones proved. |
 
-It does not judge whether a note is useful. It guarantees that the code the note relies on is still there.
+"Backed" means the evidence is still in the code, not that the note's sentence is correct. It has not yet been shown to help agents solve more tasks; see [Benchmark](#benchmark).
 
 ## How it works
 
