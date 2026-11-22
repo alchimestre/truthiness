@@ -59,7 +59,7 @@ Needs [Git](https://git-scm.com) and [Bun](https://bun.sh) 1.4.4.
 2. Create a throwaway repository with one function and build its index. Set `TOKENIZER` to the script in your clone:
 
    ```sh
-   TOKENIZER=/path/to/truthiness/.omp/truthiness-tokenizer.sh
+   TOKENIZER=/path/to/truthiness/scripts/truthiness-tokenizer.sh
    STORE=$(mktemp -d)/store.jsonl
    git init -q demo && cd demo
    echo 'export function parseConfig(text: string) { return text; }' > config.ts
@@ -136,7 +136,7 @@ Hook settings:
 | `TRUTHINESS_COMMAND` | `src/cli.ts` in this checkout |
 | `TRUTHINESS_STORE` | `$XDG_STATE_HOME/truthiness/<repo>-<hash>/canonical.jsonl` |
 | `TRUTHINESS_PENDING` | `$XDG_STATE_HOME/truthiness/<repo>-<hash>/pending` |
-| `TRUTHINESS_TOKENIZER` | `.omp/truthiness-tokenizer.sh` |
+| `TRUTHINESS_TOKENIZER` | `scripts/truthiness-tokenizer.sh` |
 | `TRUTHINESS_BOOTSTRAP` | on; `off` skips seeding and the startup recheck |
 
 ## Benchmark
@@ -222,7 +222,7 @@ Look up one note:
 echo '{"mode":"id","id":"NOTE_ID","scope":"repo","revision":"REVISION"}' | truthiness query "$STORE" "$TOKENIZER"
 ```
 
-The tokenizer is any command that reads text on stdin and prints a token count. The included `.omp/truthiness-tokenizer.sh` counts 3 bytes per token. Counting high is safe; counting low can exceed the budget.
+The tokenizer is any command that reads text on stdin and prints a token count. The included `scripts/truthiness-tokenizer.sh` counts 3 bytes per token. Counting high is safe; counting low can exceed the budget.
 
 ### Reviewer
 
@@ -232,7 +232,7 @@ Exact quotes need no reviewer. To accept other notes, set `TRUTHINESS_REVIEWER` 
 {"rubric":"...","candidates":[{"id":"...","text":"...","scope":"...","anchors":[{"path":"...","symbol":"..."}],"excerpts":[{"path":"...","text":"..."}]}],"sources":[{"path":"...","text":"..."}]}
 ```
 
-`sources` holds whole committed files. A note stays pending if its source contains a detectable secret, the request exceeds 16 KiB, or the reviewer gives no valid answer. The secret scan is not complete, so use a local reviewer if code must not leave the machine. Corrections to existing notes and axioms never go through the reviewer. `.omp/truthiness-reviewer.sh` is an example reviewer built on OMP; `TRUTHINESS_OMP_REVIEW_MODEL` picks its model.
+`sources` holds whole committed files. A note stays pending if its source contains a detectable secret, the request exceeds 16 KiB, or the reviewer gives no valid answer. The secret scan is not complete, so use a local reviewer if code must not leave the machine. Corrections to existing notes and axioms never go through the reviewer. `scripts/truthiness-reviewer.sh` is an example reviewer that calls OMP; `TRUTHINESS_OMP_REVIEW_MODEL` picks its model.
 
 ## Limits
 
