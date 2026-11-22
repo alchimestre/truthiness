@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { anchoredPathsOf, anchoredWarning, cleanHead, command, defaultProgram, defaultTokenizer, memoryPaths, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "../../../src/agent.ts";
+import { anchoredPathsOf, anchoredWarning, cleanHead, command, defaultProgram, defaultTokenizer, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "../../../src/agent.ts";
 
 const messageType = "truthiness-index";
 const modeEntry = "truthiness-mode";
@@ -83,7 +83,7 @@ function registerDraftTool(hook: Hook) {
     hook.pi.registerTool({
         name: "truthiness_draft",
         label: "Memory draft",
-        description: "Submit new notes as store records in JSONL, one per line, with secrets removed. Each note is checked against committed source now: supported notes publish, the rest stay pending.",
+        description: `Submit new notes as store records in JSONL, one per line, with secrets removed. Each note is checked against committed source now: supported notes publish, the rest stay pending. ${noteFormatHelp}`,
         parameters: hook.pi.zod.object({ jsonl: hook.pi.zod.string() }),
         async execute(_id, { jsonl }, _signal, _onUpdate, ctx) {
             if (!hook.enabled) return { content: [{ type: "text", text: "Truthiness is off for this session; nothing was staged." }], details: {} };
