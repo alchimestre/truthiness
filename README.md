@@ -234,7 +234,7 @@ Exact quotes need no reviewer. To accept other notes, set `TRUTHINESS_REVIEWER` 
 
 `sources` holds whole committed files. A note stays pending if its source contains a detectable secret, the request exceeds 16 KiB, or the reviewer gives no valid answer. The secret scan is not complete, so use a local model if code must not leave the machine. Corrections to existing notes and axioms never go through the reviewer.
 
-`scripts/truthiness-reviewer.sh` works with any model CLI. Set `TRUTHINESS_REVIEW_COMMAND` to a command that reads a prompt on stdin and prints the reply. Give the model no tools: the source it reads is untrusted.
+`scripts/truthiness-reviewer.sh` works with any model CLI. Set `TRUTHINESS_REVIEW_COMMAND` to a plain text-completion command: it reads a prompt on stdin and prints the reply, with no tools and no file or shell access. The prompt includes untrusted source, so never point it at an agent CLI that can act. If the command exits non-zero, every candidate stays pending.
 
 ```sh
 export TRUTHINESS_REVIEWER=/path/to/truthiness/scripts/truthiness-reviewer.sh
