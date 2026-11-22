@@ -47,21 +47,47 @@ Each repository gets its own store under `${XDG_STATE_HOME:-~/.local/state}/trut
 
 ## Benchmark
 
-Five hard SWE-bench Verified tasks from Sphinx (`1-4 hours` and `>4 hours`), `claude-opus-5-5`, three runs per arm, 45 graded sessions per experiment. Arms:
+Five hard SWE-bench Verified tasks from Sphinx (`1-4 hours` and `>4 hours`), 600 s per session, low thinking, three runs per arm unless a table says otherwise. Each model is a separate experiment; results are never pooled across models. Arms:
 
 - **none**: no memory.
 - **flat**: notes from earlier tasks, shown as-is.
 - **gated**: the same notes, shown only if their quote still exists at the task's base commit. The benchmark harness did that recheck; the product now does the same at session start.
 
-With notes collected from earlier sessions:
+### With notes collected from earlier sessions
 
-| Arm | Resolved | Input tokens | USD |
-| --- | --- | --- | --- |
-| none | 11/15 | 1,059k | 2.53 |
-| flat | 11/15 | 939k | 2.43 |
-| gated | 13/15 | 1,238k | 2.80 |
+OMP 19.1.0. 90 sessions, all graded, no grader errors, no timeouts. USD is OMP's list-price estimate; Sol ran on a subscription.
 
-With 11 stale notes planted on each run's fix path:
+`anthropic/claude-opus-5-5` (gate withheld 23 of 86 candidate notes):
+
+| Arm | Resolved | Input tokens | Tool calls | Seconds | USD |
+| --- | --- | --- | --- | --- | --- |
+| none | 12/15 | 1,683k | 184 | 2,028 | 3.23 |
+| flat | 12/15 | 1,934k | 179 | 1,886 | 3.47 |
+| gated | 12/15 | 2,023k | 189 | 1,923 | 3.69 |
+
+`openai-codex/gpt-6.2-sol` (gate withheld 16 of 83 candidate notes):
+
+| Arm | Resolved | Input tokens | Tool calls | Seconds | USD |
+| --- | --- | --- | --- | --- | --- |
+| none | 10/15 | 2,123k | 190 | 1,919 | 1.57 |
+| flat | 10/15 | 2,166k | 185 | 1,868 | 1.74 |
+| gated | 7/15 | 2,273k | 184 | 1,832 | 1.84 |
+
+Resolved runs per task:
+
+| Task | Opus none | Opus flat | Opus gated | Sol none | Sol flat | Sol gated |
+| --- | --- | --- | --- | --- | --- | --- |
+| 7590 | 0/3 | 1/3 | 1/3 | 1/3 | 2/3 | 1/3 |
+| 8548 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 9229 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 | 3/3 |
+| 9461 | 3/3 | 2/3 | 2/3 | 3/3 | 2/3 | 0/3 |
+| 11510 | 3/3 | 3/3 | 3/3 | 0/3 | 0/3 | 0/3 |
+
+No measurable resolution effect for either model. Opus arms differ on two tasks, in mixed directions (every sign-test p = 1.0). Sol's gap is almost all one task: gated failed 9461 in all three runs, never editing `sphinx/domains/python.py`; the mechanism is unknown, and one task is one sign-test unit (gated vs flat p = 0.5). Memory cost more on both models: gated used 20 % more input than none on Opus and 7 % more on Sol. These numbers replace an earlier OMP 19.0.1 Opus table; runs differ in OMP version and harness, so the two are not comparable.
+
+### With 11 stale notes planted on each run's fix path
+
+`anthropic/claude-opus-5-5`, OMP 19.0.1:
 
 | Arm | Stale notes shown | Resolved | Input tokens | Tool calls | Seconds | USD |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -69,7 +95,15 @@ With 11 stale notes planted on each run's fix path:
 | flat | 33/33 | 12/15 | 1,347k | 143 | 1,155 | 2.72 |
 | gated | 0/33 | 12/15 | 835k | 121 | 931 | 2.25 |
 
-The gate withheld every planted stale note. Resolution showed no measurable difference in either experiment: all arm differences come from two tasks, and five tasks cannot reach p < 0.05 on a sign test (minimum two-sided p is 0.0625). Cost is mixed: with organic notes, gated used 17 % more input and 11 % more USD than no memory; with planted stale notes, gated used 38 % less input than flat. One session per arm and task, so read cost as a direction, not a result. The measured benefit is that stale notes never reached the agent.
+`openai-codex/gpt-6.2-sol`, OMP 19.0.1, one run:
+
+| Arm | Stale notes shown | Resolved | Input tokens | Tool calls | Seconds | USD |
+| --- | --- | --- | --- | --- | --- | --- |
+| none | 0/11 | 3/5 | 782k | 69 | 775 | 0.55 |
+| flat | 11/11 | 3/5 | 935k | 68 | 867 | 0.54 |
+| gated | 0/11 | 2/5 | 624k | 60 | 709 | 0.49 |
+
+The gate withheld every planted stale note on both models. Opus resolution was identical across arms, and five tasks cannot reach p < 0.05 on a sign test (minimum two-sided p is 0.0625). Sol's single discordance is gated failing 9461, the same task gated failed in the organic-notes runs. Gated used 38 % less input than flat on Opus and 33 % less on Sol; arm-to-arm trajectory noise is large, so read it as a direction, not a result. The measured benefit is that stale notes never reached the agent. A DeepSeek planted run did not complete and is not reported.
 
 ## CLI reference
 
