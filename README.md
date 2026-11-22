@@ -6,7 +6,7 @@ Truthiness builds a body of project knowledge that coding agents can rely on. Ev
 
 Status: experimental. No releases yet; install from source. Works with any agent that can run a command at session start. Ready-made hooks for [OMP](https://omp.sh), Claude Code and Codex are included.
 
-[Why](#why) · [How it works](#how-it-works) · [Try it](#try-it) · [Connect your agent](#connect-your-agent) · [Benchmark](#benchmark) · [CLI](#cli-reference) · [Limits](#limits)
+[Why](#why) · [How it works](#how-it-works) · [Try it](#try-it) · [Connect your agent](#connect-your-agent) · [Writing notes](#writing-notes) · [Benchmark](#benchmark) · [CLI](#cli-reference) · [Limits](#limits)
 
 ## Why
 
@@ -103,7 +103,7 @@ An integration runs three CLI commands at the right moments:
 | The agent proposes notes | Remove secrets from the notes, then pipe them to `truthiness stage PENDING_FILE` and run `truthiness review-pending STORE PENDING_FILE` | Notes whose quote is found at `HEAD` are published; the rest stay pending. |
 | The agent edits a file | `truthiness anchors STORE` lists the files that notes quote | If the file is listed, remind the agent to re-read it. |
 
-A proposed note is three JSONL records: a `claim` (the fact), an `observation` (the quoted line and the commit it came from) and an `evidence_for` linking them. `batch()` in `src/review.test.ts` builds a complete, valid example. The secret check before publishing is partial, so the integration must remove secrets itself.
+A proposed note is three JSONL records; see [Writing notes](#writing-notes). The secret check before publishing is partial, so the integration must remove secrets itself.
 
 Keep `STORE` and `PENDING_FILE` outside the repository, one pair per repository.
 
@@ -174,6 +174,37 @@ All integrations keep the store in `${XDG_STATE_HOME:-~/.local/state}/truthiness
 | `TRUTHINESS_PENDING` | `$XDG_STATE_HOME/truthiness/<repo>-<hash>/pending` |
 | `TRUTHINESS_TOKENIZER` | `scripts/truthiness-tokenizer.sh` |
 | `TRUTHINESS_BOOTSTRAP` | on; `off` skips seeding and the startup recheck |
+
+## Writing notes
+
+A note is three JSONL records, one per line: the `claim` (the fact), the `observation` (the quoted code) and an `evidence_for` linking them. Replace `REVISION` with the output of `git rev-parse HEAD`:
+
+```jsonl
+{"id":"retry-limit","kind":"claim","text":"src/config.ts: export const RETRY_LIMIT = 3;","scope":"repo","anchors":[{"path":"src/config.ts"}],"check":null,"recorded_at":"2026-11-22T18:00:00Z","recorded_by":"agent"}
+{"id":"retry-limit-source","kind":"observation","content":"export const RETRY_LIMIT = 3;","source_ref":"REVISION:src/config.ts","captured_at":"2026-11-22T18:00:00Z","context":{"revision":"REVISION","source_event_id":"retry-limit-source","check_session":"agent"},"recorded_at":"2026-11-22T18:00:00Z","recorded_by":"agent"}
+{"id":"retry-limit-evidence","kind":"evidence_for","from":"retry-limit-source","to":"retry-limit","rationale":"Quoted line","assessment":{"outcome":"supports","scope":"repo","revision":"REVISION"},"recorded_at":"2026-11-22T18:00:00Z","recorded_by":"agent"}
+```
+
+| Field | Rule |
+| --- | --- |
+| `id` | Unique in the store. Every record also needs `recorded_at` (ISO 8601) and `recorded_by`. |
+| `claim.anchors` | The files the note is about: `{"path": "..."}`, plus an optional `"symbol"`. Each anchor path needs its own observation. |
+| `claim.check` | Always `null`. |
+| `observation.content` | Text copied exactly from the committed file: one whole line (leading and trailing spaces ignored) or several consecutive whole lines. |
+| `observation.source_ref` | `REVISION:path`, with the path of one of the claim's anchors. |
+| `observation.context` | `revision` is `REVISION`; `source_event_id` and `check_session` are any non-empty strings. |
+| `evidence_for.assessment` | `outcome` is `"supports"`, `scope` equals the claim's `scope`, `revision` is `REVISION`. |
+
+`REVISION` must be `HEAD` when the note is reviewed, so commit first and write notes against the new `HEAD`. Every observation must be linked to a claim, and a batch may only contain these three kinds of record.
+
+Two kinds of note:
+
+| Kind | `claim.text` | Publishes |
+| --- | --- | --- |
+| Quote | Exactly `path: line`, with one anchor, no `symbol`, scope `repo` and a one-line `content`, as in the example. | At once, without a model. |
+| Statement | Any sentence, such as `Requests are retried at most 3 times.` | Only if the [reviewer](#reviewer) confirms it from the source; otherwise it stays pending. |
+
+Write each note as one checkable fact about code that is committed. A note that the quoted code does not show (a reason, a plan, runtime behaviour) will not pass the reviewer.
 
 ## Benchmark
 

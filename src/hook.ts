@@ -2,7 +2,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { anchoredPathsOf, anchoredWarning, cleanHead, command, defaultProgram, defaultTokenizer, memoryPaths, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "./agent.ts";
+import { anchoredPathsOf, anchoredWarning, cleanHead, command, defaultProgram, defaultTokenizer, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "./agent.ts";
 
 type HookInput = { cwd?: unknown; tool_input?: unknown };
 
@@ -34,10 +34,12 @@ async function sessionStart({ cwd }: { cwd: string }) {
     if (process.env.TRUTHINESS_BOOTSTRAP !== "off") {
         await runWorker(program, ["bootstrap", store], { cwd, timeout: 15_000 }).catch(() => warn("Truthiness could not bootstrap project memory."));
     }
-    const index = command(program, ["index", store, "", head, tokenizer], cwd);
-    if (index === undefined) return warn("Truthiness could not generate the startup index.");
-    process.stdout.write(index);
-    console.log(`To propose notes, pipe store records as JSONL, secrets removed, to \`${self} draft\`. Supported notes publish; the rest stay pending.`);
+    if (existsSync(resolve(cwd, store))) {
+        const index = command(program, ["index", store, "", head, tokenizer], cwd);
+        if (index === undefined) return warn("Truthiness could not generate the startup index.");
+        process.stdout.write(index);
+    }
+    console.log(`To propose notes, pipe store records as JSONL, secrets removed, to \`${self} draft\`. Supported notes publish; the rest stay pending. ${noteFormatHelp}`);
 }
 
 async function postEdit({ cwd, toolInput }: { cwd: string; toolInput: unknown }) {

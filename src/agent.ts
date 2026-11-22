@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 export const unknownTargetWarning = "Truthiness notes may quote the file this edit changes. After the edit, re-read that file before repeating or acting on its notes. The edit is not blocked.";
 export const defaultProgram = fileURLToPath(new URL("./cli.ts", import.meta.url));
 export const defaultTokenizer = fileURLToPath(new URL("../scripts/truthiness-tokenizer.sh", import.meta.url));
+export const noteFormatHelp = `Note format: section "Writing notes" in ${fileURLToPath(new URL("../README.md", import.meta.url))}.`;
 export const runWorker = promisify(execFile);
 
 export function command(program: string, args: string[], cwd: string, input?: string) {
