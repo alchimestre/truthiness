@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/hero.svg" width="100%" alt="Truthiness: project memory for coding agents. A startup index shows two notes whose quote is still at HEAD and withholds one whose quote is gone.">
+  <img src="assets/hero.svg" width="100%" alt="Truthiness: memory for coding agents. Each note is tied to a line of code; change the line and the note is hidden.">
 </p>
 
-Truthiness is project memory for coding agents. Every note quotes a line of committed code, and the agent sees the note only while that line still exists. When the code changes, outdated notes disappear on their own.
+Truthiness is memory for coding agents. Each note is tied to one line of your code. When that line changes or is deleted, the agent stops seeing the note, so it never acts on a note the code no longer backs.
 
 Status: experimental. No releases yet; install from source. Works with any agent that can run a command at session start. A ready-made hook for [OMP](https://omp.sh) is included.
 
@@ -17,12 +17,12 @@ Truthiness checks each note against the code at every commit and hides the ones 
 ## How it works
 
 <p align="center">
-  <img src="assets/lifecycle.svg" width="100%" alt="Three stages across three commits. Pin: a note is stored with a quote and published only if the quote is found at HEAD. Show: the quote is still there, so the note reaches the agent. Withhold: the quote is gone, so the note is hidden.">
+  <img src="assets/lifecycle.svg" width="100%" alt="Three commits. Save: a note is saved with the line of code it describes. Show: the line is unchanged, so the agent sees the note. Hide: the line was changed, so the agent no longer sees it.">
 </p>
 
 | Term | Meaning |
 | --- | --- |
-| Note | One fact about the project, with a quote from a committed file as evidence. |
+| Note | One fact about the project, plus the line of code that backs it (its quote). Most notes are created automatically from code declarations and Markdown headings; the agent adds its own as it works. |
 | `HEAD` | The current commit. Quotes are always checked against it, never against uncommitted edits. |
 | Store | The file holding all notes, one JSON record per line. Kept outside the repository. |
 | Startup index | The short list of valid notes given to the agent when a session starts. At most 60 lines and 1,200 tokens; the agent can look up the rest. |
@@ -92,8 +92,10 @@ An integration runs three CLI commands at the right moments:
 | When | Run | Then |
 | --- | --- | --- |
 | Session start, clean working tree | `truthiness bootstrap STORE`, then `truthiness index STORE "" REVISION TOKENIZER` | Add the index output to the agent's context. |
-| The agent proposes notes | `truthiness stage PENDING_FILE` with the notes on stdin, then `truthiness review-pending STORE PENDING_FILE` | Notes whose quote is found at `HEAD` are published; the rest stay pending. |
+| The agent proposes notes | Remove secrets from the notes, then pipe them to `truthiness stage PENDING_FILE` and run `truthiness review-pending STORE PENDING_FILE` | Notes whose quote is found at `HEAD` are published; the rest stay pending. |
 | The agent edits a file | `truthiness anchors STORE` lists the files that notes quote | If the file is listed, remind the agent to re-read it. |
+
+A proposed note is three JSONL records: a `claim` (the fact), an `observation` (the quoted line and the commit it came from) and an `evidence_for` linking them. The allowed fields for each kind are in `recordFields` in `src/store.ts`; `truthiness bootstrap` writes examples into the store. The secret check before publishing is partial, so the integration must remove secrets itself.
 
 Keep `STORE` and `PENDING_FILE` outside the repository, one pair per repository.
 
