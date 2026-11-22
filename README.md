@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/hero.svg" width="100%" alt="Truthiness: memory for coding agents. Each note is tied to a line of code; change the line and the note is hidden.">
+  <img src="assets/hero.svg" width="100%" alt="Truthiness: knowledge your agents can rely on. Every note is backed by the code, grows each session and is rechecked at each commit.">
 </p>
 
-Truthiness is memory for coding agents. Each note is tied to one line of your code. When that line changes or is deleted, the agent stops seeing the note, so it never acts on a note the code no longer backs.
+Truthiness builds a body of project knowledge that coding agents can rely on. Every note must carry evidence: a line of committed code that backs it. A note is accepted only after its evidence is checked against the code, and it is checked again at every commit. Each session adds verified notes, and notes whose evidence is gone are hidden. Over time the agent works from a growing set of facts, each one still backed by the current code.
 
 Status: experimental. No releases yet; install from source. Works with any agent that can run a command at session start. A ready-made hook for [OMP](https://omp.sh) is included.
 
@@ -10,9 +10,17 @@ Status: experimental. No releases yet; install from source. Works with any agent
 
 ## Why
 
-Agent memory files (`AGENTS.md` notes, memory banks) keep every note forever. A note says `parseConfig()` lives in `config.ts`; someone renames it; the next session still trusts the note.
+Agent memory files (`AGENTS.md` notes, memory banks) keep whatever was written, right or wrong, forever. A note says `parseConfig()` lives in `config.ts`; someone renames it; the next session still trusts the note. Nothing in the file says which notes are still true.
 
-Truthiness checks each note against the code at every commit and hides the ones that no longer match. It does not judge whether a note is useful. It only guarantees that the code the note quotes is still there.
+Truthiness treats every note as a claim that needs proof:
+
+| Rule | Effect |
+| --- | --- |
+| No evidence, no note | A note is published only if its evidence holds in the committed code: the quoted line is found there, or an optional reviewer confirms it. |
+| Evidence expires | At every commit, each note's line is looked up again. If it is gone, the note is hidden. |
+| Knowledge accumulates | Notes that pass are kept across sessions, so each session starts with what earlier ones proved. |
+
+It does not judge whether a note is useful. It guarantees that the code the note relies on is still there.
 
 ## How it works
 
