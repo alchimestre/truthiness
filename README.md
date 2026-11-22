@@ -4,7 +4,7 @@
 
 Truthiness builds a body of project knowledge that coding agents can rely on. Every note must carry evidence: a line of committed code that backs it. A note is accepted only after its evidence is checked against the code, and it is checked again at every commit. Each session adds verified notes, and notes whose evidence is gone are hidden. Over time the agent works from a growing set of facts, each one still backed by the current code.
 
-Status: experimental. No releases yet; install from source. Works with any agent that can run a command at session start. A ready-made hook for [OMP](https://omp.sh) is included.
+Status: experimental. No releases yet; install from source. Works with any agent that can run a command at session start. Ready-made hooks for [OMP](https://omp.sh), Claude Code and Codex are included.
 
 [Why](#why) · [How it works](#how-it-works) · [Try it](#try-it) · [Connect your agent](#connect-your-agent) · [Benchmark](#benchmark) · [CLI](#cli-reference) · [Limits](#limits)
 
@@ -121,7 +121,7 @@ The included hook does all of the above.
 
 3. Start `omp` in a git repository with a clean working tree.
 
-The store lives in `${XDG_STATE_HOME:-~/.local/state}/truthiness/<repo>-<hash>/`. In a session:
+In a session:
 
 | Command or tool | Effect |
 | --- | --- |
@@ -129,7 +129,43 @@ The store lives in `${XDG_STATE_HOME:-~/.local/state}/truthiness/<repo>-<hash>/`
 | `truthiness_draft` tool | The agent submits new notes. Notes backed by committed code publish at once; the rest stay pending. |
 | `edit` or `write` on a quoted file | Adds a reminder to re-read the file. Does not block the edit. |
 
-Hook settings:
+### Claude Code and Codex
+
+`src/hook.ts` reads the hook event on stdin and works with both.
+
+| Event | Run | Effect |
+| --- | --- | --- |
+| `SessionStart` | `src/hook.ts session-start` | Adds the startup index and the draft command to the context. |
+| `PostToolUse` on an edit | `src/hook.ts post-edit` | Adds a reminder to re-read a file that notes quote. |
+| The agent proposes notes | `src/hook.ts draft < notes.jsonl` | Same as `truthiness_draft`. The agent runs it from its shell. |
+
+Claude Code, in `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts session-start" }] }],
+    "PostToolUse": [{ "matcher": "Edit|MultiEdit|Write|NotebookEdit", "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts post-edit" }] }]
+  }
+}
+```
+
+Codex, in `~/.codex/hooks.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts session-start" }] }],
+    "PostToolUse": [{ "matcher": "apply_patch", "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts post-edit" }] }]
+  }
+}
+```
+
+There is no per-session on/off switch; remove the hook entries to turn Truthiness off.
+
+### Settings
+
+All integrations keep the store in `${XDG_STATE_HOME:-~/.local/state}/truthiness/<repo>-<hash>/`, so OMP, Claude Code and Codex share one store per repository.
 
 | Variable | Default |
 | --- | --- |
