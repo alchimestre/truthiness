@@ -130,7 +130,7 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
     ].map(record => JSON.stringify(record)).join("\n") + "\n";
     const unsupported = batch("not a source line");
     const submit = async (jsonl: string) => (await handlers.get("truthiness_draft")("test", { jsonl }, undefined, undefined, ctx)).content[0].text;
-    expect(await submit(unsupported)).toBe("0 published, 1 pending automatic or operator review.");
+    expect(await submit(unsupported)).toBe('0 published, 1 pending automatic or operator review.\nRefresh the excerpt from committed source: "claim-1".');
     const staged = readdirSync(state).filter(file => file.endsWith(".jsonl") && file !== "canonical.jsonl");
     expect(staged).toHaveLength(1);
     expect(readFileSync(join(state, staged[0]), "utf8").trim().split("\n").map(line => JSON.parse(line).id).sort()).toEqual(["assessment-1", "claim-1", "observation-1"]);

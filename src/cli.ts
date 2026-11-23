@@ -101,7 +101,7 @@ async function reviewPending(store: string, pending: string, directory: string) 
     const result = review(batch, revision, path => readBlob(directory, revision, path), process.env.TRUTHINESS_REVIEWER);
     if (result.approved && head(directory) !== revision) throw new Error("Source revision changed during review; batch remains pending");
     const published = await publishNew(store, result.approved);
-    console.log(JSON.stringify({ published, pending: result.pending }));
+    console.log(JSON.stringify({ published, pending: result.pending, pendingReasons: result.pendingReasons }));
 }
 
 async function publishNew(store: string, approved: string) {

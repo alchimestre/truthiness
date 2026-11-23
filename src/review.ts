@@ -8,33 +8,48 @@ type Excerpt = { path: string; text: string };
 type Anchor = { path: string; symbol?: string };
 type Candidate = { id: string; text: string; scope: string; anchors: Anchor[]; excerpts: Excerpt[] };
 type ReviewGroup = { candidate: Candidate; records: RecordLine[]; exact: boolean };
+export type PendingReason = "invalid_batch" | "missing_evidence" | "invalid_evidence" | "stale_evidence" |
+    "source_mismatch" | "missing_anchor_coverage" | "semantic_review_required" | "semantic_review_rejected";
+type PendingClaim = { id: string | null; reason: PendingReason };
 
 export function review(batch: string, revision: string, readSource: Source, reviewer?: string) {
     const graph = parseProposal(batch);
     const records = Object.values(graph);
     const claims = records.filter(record => record.kind === "claim");
     const evidence = groupEvidence(graph, records);
-    if (!evidence) return { approved: "", published: 0, pending: Math.max(1, claims.length) };
+    if (!evidence) {
+        const pendingReasons = (claims.length ? claims : [{ id: null }])
+            .map(({ id }): PendingClaim => ({ id, reason: "invalid_batch" }));
+        return { approved: "", published: 0, pending: pendingReasons.length, pendingReasons };
+    }
 
     const sources = new Map<string, string | undefined>();
-    const groups = claims.flatMap(claim => {
-        const group = verifyClaim(claim, evidence.get(claim.id) ?? [], graph, revision, path => {
+    const pendingReasons: PendingClaim[] = [];
+    const groups: ReviewGroup[] = [];
+    for (const claim of claims) {
+        const result = verifyClaim(claim, evidence.get(claim.id) ?? [], graph, revision, path => {
             if (!sources.has(path)) sources.set(path, readSource(path));
             return sources.get(path);
         });
-        return group ? [group] : [];
-    });
+        if (typeof result === "string") pendingReasons.push({ id: claim.id, reason: result });
+        else groups.push(result);
+    }
     const semantic = groups.filter(group => !group.exact).map(group => group.candidate);
-    const accepted = reviewer && semantic.length ? decide(semantic, sources, reviewer) : new Set<string>();
+    const verdicts = reviewer && semantic.length ? decide(semantic, sources, reviewer) : new Map<string, boolean>();
     const approved = new Map<string, RecordLine>();
     let published = 0;
     for (const group of groups) {
-        if (!group.exact && !accepted.has(group.candidate.id)) continue;
+        const verdict = verdicts.get(group.candidate.id);
+        if (!group.exact && !verdict) {
+            const reason = verdict === false ? "semantic_review_rejected" : "semantic_review_required";
+            pendingReasons.push({ id: group.candidate.id, reason });
+            continue;
+        }
         published++;
         for (const record of group.records) approved.set(record.id, record);
     }
     const jsonl = [...approved.values()].map(record => `${JSON.stringify(record)}\n`).join("");
-    return { approved: jsonl, published, pending: claims.length - published };
+    return { approved: jsonl, published, pending: pendingReasons.length, pendingReasons };
 }
 
 export function recheckBatch(store: Graph, revision: string): string {
@@ -91,8 +106,9 @@ function groupEvidence(graph: Graph, records: RecordLine[]) {
     return evidence;
 }
 
-function verifyClaim(claim: RecordLine, evidence: RecordLine[], graph: Graph, revision: string, source: Source): ReviewGroup | undefined {
-    if (!evidence.length || claim.check !== null) return;
+function verifyClaim(claim: RecordLine, evidence: RecordLine[], graph: Graph, revision: string, source: Source): ReviewGroup | PendingReason {
+    if (!evidence.length) return "missing_evidence";
+    if (claim.check !== null) return "invalid_evidence";
     const anchors = claim.anchors as Anchor[];
     const paths = new Map(anchors.map(anchor => [`${revision}:${anchor.path}`, anchor.path]));
     const excerpts: Excerpt[] = [];
@@ -102,16 +118,18 @@ function verifyClaim(claim: RecordLine, evidence: RecordLine[], graph: Graph, re
         const assessment = link.assessment as Record<string, unknown>;
         const context = observation.context as Record<string, unknown>;
         const path = paths.get(String(observation.source_ref));
-        if (!path || assessment.revision !== revision || context.revision !== revision || assessment.scope !== claim.scope) return;
-        if (!context.source_event_id || !context.check_session) return;
+        if (assessment.revision !== revision || context.revision !== revision) return "stale_evidence";
+        if (!path || assessment.scope !== claim.scope || !context.source_event_id || !context.check_session) {
+            return "invalid_evidence";
+        }
         const content = String(observation.content).replace(/\r\n/g, "\n").replace(/\n$/, "");
         const text = content.includes("\n") ? content : content.trim();
-        if (!text.trim() || !matchesSource(source(path), text)) return;
+        if (!text.trim() || !matchesSource(source(path), text)) return "source_mismatch";
         excerpts.push({ path, text });
         records.push(link, observation);
     }
     const evidencedPaths = new Set(excerpts.map(excerpt => excerpt.path));
-    if (anchors.some(anchor => !evidencedPaths.has(anchor.path))) return;
+    if (anchors.some(anchor => !evidencedPaths.has(anchor.path))) return "missing_anchor_coverage";
     const [excerpt] = excerpts;
     const text = String(claim.text);
     const exact = claim.scope === "repo" && anchors.length === 1 && anchors[0].symbol === undefined &&
@@ -126,18 +144,18 @@ function matchesSource(source: string | undefined, excerpt: string): boolean {
     return `\n${source.replace(/\r\n/g, "\n")}\n`.includes(`\n${excerpt}\n`);
 }
 
-function decide(candidates: Candidate[], blobs: Map<string, string | undefined>, reviewer: string): Set<string> {
+function decide(candidates: Candidate[], blobs: Map<string, string | undefined>, reviewer: string): Map<string, boolean> {
     const limit = 16 * 1024;
     const { input, ids } = reviewRequest(candidates, blobs, limit);
-    if (!ids.size) return new Set();
+    if (!ids.size) return new Map();
     const result = spawnSync(reviewer, [], { input, encoding: "utf8", timeout: 30_000, maxBuffer: limit });
-    if (result.status !== 0) return new Set();
+    if (result.status !== 0) return new Map();
     try {
         const approved: unknown = JSON.parse(result.stdout);
-        if (!Array.isArray(approved) || !approved.every(id => typeof id === "string" && ids.has(id))) return new Set();
-        return new Set(approved);
+        if (!Array.isArray(approved) || !approved.every(id => typeof id === "string" && ids.has(id))) return new Map();
+        return new Map([...ids].map(id => [id, approved.includes(id)]));
     } catch {
-        return new Set();
+        return new Map();
     }
 }
 

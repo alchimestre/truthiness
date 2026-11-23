@@ -277,11 +277,24 @@ The gate hid every planted stale note on both models. Opus solved the same tasks
 | `truthiness query STORE TOKENIZER` | Answer one JSON query from stdin (`id`, `sparse`, `flat` or `graph` mode) within a token budget. |
 | `truthiness anchors STORE` | Print `{"paths":[...]}`: the files quoted by valid notes. |
 | `truthiness stage PENDING_FILE` | Add the JSONL notes on stdin to the pending queue. |
-| `truthiness review-pending STORE PENDING_FILE` | Check notes against `HEAD` and print `{"published": N, "pending": M}`. `published` counts newly added claims; `pending` counts claims not approved by this review. |
+| `truthiness review-pending STORE PENDING_FILE` | Check notes against `HEAD`. Print `{"published": N, "pending": M, "pendingReasons": [{"id": ID, "reason": CODE}]}`. `published` counts newly added claims. |
 | `truthiness publish STORE DIGEST` | Publish an already reviewed batch from stdin. `DIGEST` is the SHA-256 of the reviewed bytes. |
 | `truthiness publish-authorized STORE APPROVAL_FILE` | Publish axioms from stdin. The approval file holds `digest` and `authorityObservationIDs`. |
 | `truthiness axioms STORE SCOPE` | Print the axioms for a scope. |
 | `truthiness validate STORE` | Check the store for errors. |
+
+`pending` counts claims not approved. `pendingReasons` gives one entry per pending claim (empty if none). An invalid batch with no claims has one batch-level entry with `id: null`. The agent groups pending claims by next action, lists up to 10 IDs per action, and never quotes evidence.
+
+| Pending reason | Next action |
+| --- | --- |
+| `invalid_batch` | Fix the evidence links in the draft. |
+| `missing_evidence` | Attach supporting evidence. |
+| `invalid_evidence` | Correct the evidence metadata to match the claim and its anchors. |
+| `stale_evidence` | Refresh the evidence at the current source revision. |
+| `source_mismatch` | Refresh the excerpt from committed source. |
+| `missing_anchor_coverage` | Attach supporting evidence for every anchor. |
+| `semantic_review_required` | Request semantic or operator review. No reviewer is configured, or the reviewer failed or could not receive the claim. |
+| `semantic_review_rejected` | Revise the claim or its evidence. The reviewer answered without approving it. |
 
 Look up one note:
 

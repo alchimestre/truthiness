@@ -42,12 +42,39 @@ test("automated review does not treat line presence as semantic support", () => 
     fixture((cwd, revision) => {
         const path = join(cwd, "pending.jsonl");
         writeFileSync(path, batch(revision, "false", "The parser validates its input.") + batch(revision, "quote", `parser.js: ${excerpt}`));
-        expect(reviewPending(cwd, path)).toEqual({ published: 1, pending: 1 });
+        expect(reviewPending(cwd, path)).toMatchObject({ published: 1, pending: 1 });
         const store = readFileSync(join(cwd, "canonical.jsonl"), "utf8");
         expect(store).toContain('"id":"quote"');
         expect(store).not.toContain('"id":"false"');
-        expect(reviewPending(cwd, path)).toEqual({ published: 0, pending: 1 });
+        expect(reviewPending(cwd, path)).toMatchObject({ published: 0, pending: 1 });
         expect(readFileSync(join(cwd, "canonical.jsonl"), "utf8")).toBe(store);
+    });
+});
+
+test("mixed review reports distinct pending reasons without exposing evidence", () => {
+    fixture((cwd, previous) => {
+        writeFileSync(join(cwd, "later.txt"), "changed\n");
+        git(cwd, "add", "later.txt");
+        git(cwd, "commit", "-qm", "New revision");
+        const revision = git(cwd, "rev-parse", "HEAD");
+        const path = join(cwd, "pending.jsonl");
+        const draft = batch(revision, "quote", `parser.js: ${excerpt}`) +
+            batch(previous, "stale", `parser.js: ${excerpt}`) +
+            batch(revision, "semantic", "The parser returns its argument.");
+        writeFileSync(path, draft);
+        expect(reviewPending(cwd, path)).toEqual({
+            published: 1,
+            pending: 2,
+            pendingReasons: [
+                { id: "stale", reason: "stale_evidence" },
+                { id: "semantic", reason: "semantic_review_required" },
+            ],
+        });
+        expect(readFileSync(path, "utf8")).toBe(draft);
+        const store = readFileSync(join(cwd, "canonical.jsonl"), "utf8");
+        expect(store).toContain('"id":"quote"');
+        expect(store).not.toContain('"id":"stale"');
+        expect(store).not.toContain('"id":"semantic"');
     });
 });
 
@@ -64,7 +91,7 @@ test("replace refs do not move the source revision past a store-only commit", ()
         git(cwd, "replace", git(cwd, "rev-parse", "HEAD"), replacement);
         const path = join(cwd, "pending.jsonl");
         writeFileSync(path, batch(revision, "quote", `parser.js: ${excerpt}`));
-        expect(reviewPending(cwd, path)).toEqual({ published: 1, pending: 0 });
+        expect(reviewPending(cwd, path)).toEqual({ published: 1, pending: 0, pendingReasons: [] });
     });
 });
 
@@ -75,13 +102,15 @@ test("a generic reviewer cannot approve IDs outside grounded candidates", () => 
         writeFileSync(path, batch(revision, "supported", "`parse` returns its argument.") +
             batch(revision, "fabricated", "`parse` returns null.", "export function parse(value) { return null; }"));
         writeFileSync(reviewer, "#!/bin/sh\nprintf '%s\\n' '[\"supported\",\"fabricated\"]'\n", { mode: 0o700 });
-        expect(reviewPending(cwd, path, reviewer)).toEqual({ published: 0, pending: 2 });
+        expect(reviewPending(cwd, path, reviewer)).toMatchObject({ published: 0, pending: 2 });
         writeFileSync(reviewer, `#!/usr/bin/env bun
 const { rubric, candidates } = await Bun.stdin.json();
 if (!rubric.includes("Abstain") || candidates.length !== 1 || candidates[0].excerpts[0].text !== ${JSON.stringify(excerpt)}) process.exit(2);
 console.log(JSON.stringify(candidates.map(candidate => candidate.id)));
 `);
-        expect(reviewPending(cwd, path, reviewer)).toEqual({ published: 1, pending: 1 });
+        expect(reviewPending(cwd, path, reviewer)).toEqual({
+            published: 1, pending: 1, pendingReasons: [{ id: "fabricated", reason: "source_mismatch" }],
+        });
         expect(readFileSync(join(cwd, "canonical.jsonl"), "utf8")).not.toContain('"id":"fabricated"');
     });
 });
@@ -98,7 +127,9 @@ const parser = sources.find(source => source.path === "parser.js");
 const commented = parser?.text === ${JSON.stringify(`/*\n${excerpt}\n*/\n`)};
 console.log(JSON.stringify(commented ? [] : candidates.map(candidate => candidate.id)));
 `, { mode: 0o700 });
-        expect(reviewPending(cwd, path, reviewer)).toEqual({ published: 0, pending: 1 });
+        expect(reviewPending(cwd, path, reviewer)).toEqual({
+            published: 0, pending: 1, pendingReasons: [{ id: "runtime", reason: "semantic_review_rejected" }],
+        });
     }, `/*\n${excerpt}\n*/\n`);
 });
 
@@ -117,7 +148,7 @@ test("oversized committed context does not block other claims", () => {
 const { candidates } = await Bun.stdin.json();
 console.log(JSON.stringify(candidates.map(candidate => candidate.id)));
 `, { mode: 0o700 });
-        expect(reviewPending(cwd, path, reviewer)).toEqual({ published: 2, pending: 1 });
+        expect(reviewPending(cwd, path, reviewer)).toMatchObject({ published: 2, pending: 1 });
     }, `/*${"\"\\".repeat(4100)}\n${excerpt}\n*/\n`);
 });
 
@@ -127,7 +158,9 @@ test("semantic review does not send detectable secrets outside the proposed exce
         const reviewer = join(cwd, "reviewer");
         writeFileSync(path, batch(revision, "runtime", "`parse` returns its argument at runtime."));
         writeFileSync(reviewer, "#!/bin/sh\nprintf '%s\\n' '[\"runtime\"]'\n", { mode: 0o700 });
-        expect(reviewPending(cwd, path, reviewer)).toEqual({ published: 0, pending: 1 });
+        expect(reviewPending(cwd, path, reviewer)).toEqual({
+            published: 0, pending: 1, pendingReasons: [{ id: "runtime", reason: "semantic_review_required" }],
+        });
     }, `const api_key = "test-placeholder-only";\n${excerpt}\n`);
 });
 
@@ -167,7 +200,9 @@ test("staged source evidence at a past revision does not publish at HEAD", () =>
         writeFileSync(join(cwd, "later.txt"), "changed\n");
         git(cwd, "add", "later.txt");
         git(cwd, "commit", "-qm", "New revision");
-        expect(reviewPending(cwd, path)).toEqual({ published: 0, pending: 1 });
+        expect(reviewPending(cwd, path)).toEqual({
+            published: 0, pending: 1, pendingReasons: [{ id: "quote", reason: "stale_evidence" }],
+        });
     });
 });
 
