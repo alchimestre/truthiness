@@ -1,0 +1,20 @@
+{
+  "revision": "d7d51a956c5d9438741f75b6c88f9038b6ea2d04",
+  "task": "An edit can trigger a Truthiness reread reminder solely because a superseded note still anchors its path. Fix this: a superseded note must no longer trigger a reminder, but a different active claim anchoring the same path must still trigger one. Use grep to locate the existing anchor predicate. Read only the relevant lines, using a line range in every read (at most 25 lines per call); do not read whole files. Preserve the exported function signature and unrelated behavior. Return only the complete replacement TypeScript function, with its export, and no Markdown fences, explanation, or diff. The harness will replace the function and generate the diff. Do not change tests.\n",
+  "trials": {
+    "off": {
+      "diff": "diff --git a/src/lookup.ts b/src/lookup.ts\nindex ee88fb5..13343f2 100644\n--- a/src/lookup.ts\n+++ b/src/lookup.ts\n@@ -97,8 +97,15 @@ function makeResult(matches: Match[], capped: string[]): Result {\n \n export function anchored(records: Records, paths: string[]): boolean {\n   const wanted = new Set(paths);\n-  return Object.values(records).some(record => Array.isArray(record.anchors) &&\n-    record.anchors.some(anchor => Boolean(anchor) && typeof anchor === \"object\" && wanted.has(String((anchor as Record<string, unknown>).path))));\n+  return Object.values(records).some(record =>\n+    record.superseded_by == null &&\n+    Array.isArray(record.anchors) &&\n+    record.anchors.some(anchor =>\n+      Boolean(anchor) &&\n+      typeof anchor === \"object\" &&\n+      wanted.has(String((anchor as Record<string, unknown>).path)),\n+    ),\n+  );\n }\n \n function sparseIDs(records: Records, request: Request): string[] {\n",
+      "test_summary": [
+        "14 pass",
+        "1 fail"
+      ]
+    },
+    "low": {
+      "diff": "diff --git a/src/lookup.ts b/src/lookup.ts\nindex ee88fb5..dc45c82 100644\n--- a/src/lookup.ts\n+++ b/src/lookup.ts\n@@ -97,8 +97,23 @@ function makeResult(matches: Match[], capped: string[]): Result {\n \n export function anchored(records: Records, paths: string[]): boolean {\n   const wanted = new Set(paths);\n-  return Object.values(records).some(record => Array.isArray(record.anchors) &&\n-    record.anchors.some(anchor => Boolean(anchor) && typeof anchor === \"object\" && wanted.has(String((anchor as Record<string, unknown>).path))));\n+  const superseded = new Set<unknown>();\n+\n+  for (const record of Object.values(records)) {\n+    if (record.kind === \"supersedes\" && typeof record.from === \"string\") {\n+      superseded.add(record.to);\n+    }\n+  }\n+\n+  return Object.entries(records).some(([id, record]) =>\n+    !superseded.has(id) &&\n+    Array.isArray(record.anchors) &&\n+    record.anchors.some(anchor =>\n+      Boolean(anchor) &&\n+      typeof anchor === \"object\" &&\n+      wanted.has(String((anchor as Record<string, unknown>).path)),\n+    ),\n+  );\n }\n \n function sparseIDs(records: Records, request: Request): string[] {\n",
+      "test_summary": [
+        "15 pass",
+        "0 fail"
+      ]
+    }
+  }
+}

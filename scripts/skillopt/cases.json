@@ -1,0 +1,63 @@
+{
+  "revision": "72467e50d2b82579a88249de05b9598b2f146464",
+  "cases": [
+    {
+      "id": "new-file-path", "effort": "low",
+      "question": "Locate the function that handles a path whose own realpath cannot be resolved yet. Quote the line that handles the fallback.",
+      "sources": {"src/agent.ts": [45, 57], "src/hook.ts": [45, 62]},
+      "path": "src/agent.ts", "symbol": "realPath", "line": 55
+    },
+    {
+      "id": "patch-targets", "effort": "low",
+      "question": "Locate the function that extracts file paths from the Codex patch command. Quote the line that extracts them, not its caller.",
+      "sources": {"src/agent.ts": [45, 57], "src/hook.ts": [45, 62]},
+      "path": "src/hook.ts", "symbol": "editTargets", "line": 60
+    },
+    {
+      "id": "partial-evidence", "effort": "low",
+      "question": "A proposed note has two anchors. Its only observation matches committed source for the first anchor. Assuming other checks pass, where is this rejected and why? Quote the decisive line.",
+      "sources": {"src/review.ts": [94, 118], "src/lookup.ts": [130, 147]},
+      "path": "src/review.ts", "symbol": "verifyClaim", "line": 114,
+      "reference": "Matching one excerpt does not cover every anchor. The evidenced-path set lacks the second path, so the claim is rejected before semantic review."
+    },
+    {
+      "id": "cross-revision", "effort": "low",
+      "question": "A query for revision B has one otherwise usable support relation. Its observation context is at B but the relation's assessment is at A. Where is that relation excluded and what status follows if no other relation applies? Quote the decisive filtering line.",
+      "sources": {"src/lookup.ts": [130, 153], "src/review.ts": [104, 127]},
+      "path": "src/lookup.ts", "symbol": "assess", "line": 145,
+      "reference": "Matching the observation revision is insufficient: the assessment revision must also match the query revision. The relation is skipped, leaving no applicable typed assessment, so the status is recheck_required."
+    },
+    {
+      "id": "resolved-withdrawal-chain", "effort": "low",
+      "question": "A claim has five applicable relations, with no others: S (supports, event s, observation o-support), X (challenges, event x, observation o-challenge), X2 (challenges, also event x, observation o-copy), W (inconclusive, event w, observation o-withdrawal, resolves X), and E (supports, event e, observation o-endorse, resolves W). Quote the line that builds the resolution set.",
+      "sources": {"src/lookup.ts": [130, 171]},
+      "path": "src/lookup.ts", "symbol": "assess", "line": 151,
+      "answer_format": "For symbol, give the enclosing function name, not the variable being declared. Also return with_resolution and without_resolution, each an object with a status string and a sorted evidence_ids array of strings. In with_resolution, use all five relations as given. In without_resolution, remove E's resolves list, but keep E otherwise unchanged. Return resolved_w_still_resolves_x and x2_shares_x_resolution_key as JSON booleans. Do not include prose.",
+      "expected_fields": {
+        "with_resolution": {"status": "may_steer", "evidence_ids": ["o-endorse", "o-support"]},
+        "without_resolution": {"status": "recheck_required", "evidence_ids": ["o-endorse", "o-support", "o-withdrawal"]},
+        "resolved_w_still_resolves_x": true,
+        "x2_shares_x_resolution_key": true
+      }
+    },
+    {
+      "id": "reviewer-exit-status", "effort": "low",
+      "revision": "feb444fdd4481e1e45a4529ebeaac0a767ee64a2",
+      "patch_path": "scripts/truthiness-reviewer.sh",
+      "question": "Fix the reviewer wrapper so a reviewer that outputs valid-looking JSON then exits nonzero causes the wrapper to exit with the reviewer's status and emit no stdout. Preserve prompt framing, stdin forwarding, and removal of Markdown fence lines on success. Keep POSIX sh. Return only the complete replacement file, starting with its shebang, without Markdown fences."
+    },
+    {
+      "id": "review-pending-repeat", "effort": "low",
+      "source_fixture": "publication-source.json",
+      "question": "Against unchanged HEAD and with no concurrent writers, review a manual batch with one accepted claim and one rejected claim twice. Separately, submit a fully accepted one-claim draft through the agent twice, using identical IDs and records each time. Quote the line that counts newly added claims in the CLI. Give both CLI counts and whether the staged file remains after the second agent submission. Assume filesystem operations succeed.",
+      "path": "src/cli.ts", "symbol": "publishNew", "line": 113,
+      "answer_format": "Return manual_first, manual_repeat, and agent_repeat as objects with integer published and pending fields. Return agent_repeat_staged_file_exists as a boolean.",
+      "expected_fields": {
+        "manual_first": {"published": 1, "pending": 1},
+        "manual_repeat": {"published": 0, "pending": 1},
+        "agent_repeat": {"published": 0, "pending": 0},
+        "agent_repeat_staged_file_exists": false
+      }
+    }
+  ]
+}

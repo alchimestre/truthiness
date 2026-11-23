@@ -1,0 +1,8 @@
+retry:
+  enabled: false
+  modelFallback: false
+  usageAwareFallback: false
+contextPromotion:
+  enabled: false
+mcp:
+  enableProjectConfig: false

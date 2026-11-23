@@ -323,6 +323,39 @@ bun run typecheck
 bun test
 ```
 
+### SkillOpt benchmark
+
+Requires macOS (`sandbox-exec`), Python 3.12, `omp` with Codex sign-in, and `TYPESAFE_API_KEY` for grading. Use a full clone for the pinned Git revisions.
+
+1. Install the benchmark dependency in a virtual environment:
+
+   ```sh
+   python3 -m venv .venv
+   .venv/bin/python -m pip install -r scripts/skillopt/requirements.txt
+   ```
+
+2. Screen four candidates against the stock seed, with five samples per case per arm at `low`:
+
+   ```sh
+   runs=$(mktemp -d)
+   .venv/bin/python scripts/skillopt/swarm.py "$runs/screen"
+   ```
+
+3. Replicate an eligible candidate independently:
+
+   ```sh
+   .venv/bin/python scripts/skillopt/swarm.py "$runs/replica" \
+     --seed "$runs/screen/seed.md" --candidate "$runs/screen/candidate-1/candidate.md" --samples 10
+   ```
+
+| Output | Use |
+|---|---|
+| `summary.json` | Per-case grades and promotion eligibility; `null` means unresolved. |
+| `candidate-*/candidate.md` | Saved candidate for replication; never installed by the runner. |
+| `manifest.json` | Held-out cases, sample count, and grading settings. |
+
+Keep run directories local. They contain prompts and model responses.
+
 ## License
 
 [MIT](LICENSE)
