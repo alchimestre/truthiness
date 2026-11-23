@@ -51,6 +51,23 @@ test("automated review does not treat line presence as semantic support", () => 
     });
 });
 
+test("replace refs do not move the source revision past a store-only commit", () => {
+    fixture((cwd, revision) => {
+        writeFileSync(join(cwd, "parser.js"), "export function replaced() {}\n");
+        git(cwd, "add", "parser.js");
+        const replacement = git(cwd, "commit-tree", git(cwd, "write-tree"), "-p", revision, "-m", "Replacement");
+        git(cwd, "reset", "-q", "--hard");
+        mkdirSync(join(cwd, ".truthiness"));
+        writeFileSync(join(cwd, ".truthiness", "canonical.jsonl"), "");
+        git(cwd, "add", ".truthiness");
+        git(cwd, "commit", "-qm", "Store");
+        git(cwd, "replace", git(cwd, "rev-parse", "HEAD"), replacement);
+        const path = join(cwd, "pending.jsonl");
+        writeFileSync(path, batch(revision, "quote", `parser.js: ${excerpt}`));
+        expect(reviewPending(cwd, path)).toEqual({ published: 1, pending: 0 });
+    });
+});
+
 test("a generic reviewer cannot approve IDs outside grounded candidates", () => {
     fixture((cwd, revision) => {
         const path = join(cwd, "pending.jsonl");

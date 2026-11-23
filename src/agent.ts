@@ -23,14 +23,14 @@ export function anchoredWarning(paths: string[]) {
 }
 
 export function cleanSourceRevision(cwd: string) {
-    const status = command("git", ["status", "--porcelain", "--untracked-files=all", "--", ":(top)", `:(top,exclude)${storeDirectory}`], cwd);
+    const status = command("git", ["--no-replace-objects", "status", "--porcelain", "--untracked-files=all", "--", ":(top)", `:(top,exclude)${storeDirectory}`], cwd);
     if (status !== "") return undefined;
     return sourceRevision(cwd);
 }
 
 // Evidence is keyed to this, not HEAD: a commit touching only the store must not make every note stale.
 export function sourceRevision(cwd: string) {
-    const lastSourceChange = command("git", ["log", "-1", "--format=%H", "HEAD", "--", ":(top)", `:(top,exclude)${storeDirectory}`], cwd)?.trim();
+    const lastSourceChange = command("git", ["--no-replace-objects", "log", "-1", "--format=%H", "HEAD", "--", ":(top)", `:(top,exclude)${storeDirectory}`], cwd)?.trim();
     return lastSourceChange || command("git", ["rev-parse", "--verify", "HEAD^{commit}"], cwd)?.trim();
 }
 
