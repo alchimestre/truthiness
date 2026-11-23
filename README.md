@@ -11,10 +11,16 @@ Experimental · [MIT](LICENSE)
 Requires [Git](https://git-scm.com) and [Bun](https://bun.sh) 1.4.4.
 
 ```sh
-git clone https://github.com/alchimestre/truthiness && cd truthiness && bun link
+bun add -g truthiness
 ```
 
-Use the clone's absolute path in place of `/path/to/truthiness` below.
+To locate the installed hook files, resolve the CLI symlink:
+
+```sh
+bun -e 'import { realpathSync } from "node:fs"; import { dirname } from "node:path"; console.log(dirname(dirname(realpathSync(Bun.which("truthiness")!))));'
+```
+
+Use the printed directory in place of `/path/to/truthiness` below.
 
 ## How notes stay current
 
