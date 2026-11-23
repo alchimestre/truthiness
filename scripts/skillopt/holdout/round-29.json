@@ -1,0 +1,118 @@
+{
+  "revision": "c25e2c45990e8d24d8c00f4000613b6f75eee8ea",
+  "cases": [
+    {
+      "id": "r29-unchanged-store-cache",
+      "effort": "low",
+      "question": "The store file's size and modification time are identical to the previous call. Quote the line that returns the cached anchored paths without spawning the worker.",
+      "sources": {
+        "src/agent.ts": [
+          68,
+          85
+        ],
+        "src/hook.ts": [
+          45,
+          53
+        ]
+      },
+      "path": "src/agent.ts",
+      "symbol": "anchoredPathsOf",
+      "line": 74
+    },
+    {
+      "id": "r29-dirty-tree-session",
+      "effort": "low",
+      "question": "A session starts in a checkout with uncommitted source changes. Quote the line that makes session start return before it bootstraps or prints any index.",
+      "sources": {
+        "src/hook.ts": [
+          30,
+          43
+        ],
+        "src/agent.ts": [
+          26,
+          36
+        ]
+      },
+      "path": "src/hook.ts",
+      "symbol": "sessionStart",
+      "line": 33
+    },
+    {
+      "id": "r29-no-reviewer-reason",
+      "effort": "low",
+      "question": "No reviewer is configured. A claim passes verifyClaim but is not an exact single-line match. Quote the line that chooses its pending reason.",
+      "sources": {
+        "src/review.ts": [
+          15,
+          53
+        ],
+        "src/agent.ts": [
+          114,
+          123
+        ]
+      },
+      "path": "src/review.ts",
+      "symbol": "review",
+      "line": 44,
+      "answer_format": "Also return reason, the pending reason string recorded for that claim.",
+      "expected_fields": {
+        "reason": "semantic_review_required"
+      }
+    },
+    {
+      "id": "r29-unrecognised-outcome",
+      "effort": "low",
+      "question": "A relation's assessment is otherwise valid but its outcome is \"refutes\", which is not a recognised outcome. Quote the line of the assessment function that skips the relation.",
+      "sources": {
+        "src/lookup.ts": [
+          130,
+          153
+        ],
+        "src/store.ts": [
+          262,
+          268
+        ]
+      },
+      "path": "src/lookup.ts",
+      "symbol": "assess",
+      "line": 143
+    },
+    {
+      "id": "r29-source-moved-during-review",
+      "effort": "low",
+      "question": "A new source commit lands while a pending batch is being reviewed and some claims were approved. Where is that detected, and what happens to the batch? Quote the line that aborts before publishing.",
+      "sources": {
+        "src/cli.ts": [
+          96,
+          114
+        ],
+        "src/agent.ts": [
+          26,
+          36
+        ]
+      },
+      "path": "src/cli.ts",
+      "symbol": "reviewPending",
+      "line": 102,
+      "reference": "The source revision is read again after review; if it differs and anything was approved, an error is thrown before publishing, so the batch is not published and remains pending."
+    },
+    {
+      "id": "r29-path-traversal-blob",
+      "effort": "low",
+      "question": "readBlob is asked for the path \"docs/../secrets.md\". Quote the line that returns without invoking git.",
+      "sources": {
+        "src/bootstrap.ts": [
+          164,
+          177
+        ],
+        "src/agent.ts": [
+          16,
+          20
+        ]
+      },
+      "path": "src/bootstrap.ts",
+      "symbol": "readBlob",
+      "line": 175
+    }
+  ]
+}

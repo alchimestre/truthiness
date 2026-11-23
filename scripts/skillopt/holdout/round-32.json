@@ -1,0 +1,126 @@
+{
+  "revision": "c25e2c45990e8d24d8c00f4000613b6f75eee8ea",
+  "cases": [
+    {
+      "id": "r32-store-env-override",
+      "effort": "low",
+      "question": "TRUTHINESS_STORE is set to a custom path inside a Git repository. Quote the line that makes it win over the repository's default store location.",
+      "sources": {
+        "src/agent.ts": [
+          41,
+          52
+        ],
+        "src/hook.ts": [
+          64,
+          72
+        ]
+      },
+      "path": "src/agent.ts",
+      "symbol": "memoryPaths",
+      "line": 49
+    },
+    {
+      "id": "r32-missing-cwd",
+      "effort": "low",
+      "question": "A hook payload is valid JSON but has no cwd field. Quote the line that falls back to the current process directory.",
+      "sources": {
+        "src/hook.ts": [
+          15,
+          43
+        ],
+        "src/agent.ts": [
+          41,
+          52
+        ]
+      },
+      "path": "src/hook.ts",
+      "symbol": "parseHookInput",
+      "line": 27
+    },
+    {
+      "id": "r32-unknown-reviewer-id",
+      "effort": "low",
+      "question": "decide sent candidates c1 and c2 to the reviewer. The reviewer exits with status 0 and prints [\"c1\",\"zzz\"], where zzz was never sent. Quote the line that rejects this output.",
+      "sources": {
+        "src/review.ts": [
+          147,
+          160
+        ],
+        "src/cli.ts": [
+          96,
+          105
+        ]
+      },
+      "path": "src/review.ts",
+      "symbol": "decide",
+      "line": 155,
+      "answer_format": "Also return verdict_count, the integer size of the Map that decide returns.",
+      "expected_fields": {
+        "verdict_count": 0
+      }
+    },
+    {
+      "id": "r32-same-event-disagreement",
+      "effort": "low",
+      "question": "A claim has exactly two applicable relations at the query scope and revision, resolving nothing: R1 (supports, event e, observation o-1) and R2 (inconclusive, event e, observation o-2). Quote the line that flags the event as conflicted.",
+      "sources": {
+        "src/lookup.ts": [
+          130,
+          171
+        ],
+        "src/review.ts": [
+          90,
+          107
+        ]
+      },
+      "path": "src/lookup.ts",
+      "symbol": "assess",
+      "line": 160,
+      "answer_format": "Also return result as an object with a status string and a sorted evidence_ids array of strings.",
+      "expected_fields": {
+        "result": {
+          "status": "recheck_required",
+          "evidence_ids": [
+            "o-1"
+          ]
+        }
+      }
+    },
+    {
+      "id": "r32-outcome-stdout",
+      "effort": "low",
+      "question": "review-pending reports its outcome on stdout for the agent to parse. Quote the line that prints it.",
+      "sources": {
+        "src/cli.ts": [
+          96,
+          114
+        ],
+        "src/agent.ts": [
+          87,
+          112
+        ]
+      },
+      "path": "src/cli.ts",
+      "symbol": "reviewPending",
+      "line": 104
+    },
+    {
+      "id": "r32-existing-landmark",
+      "effort": "low",
+      "question": "A landmark note's claim id already exists in the store. Quote the line that skips that note.",
+      "sources": {
+        "src/bootstrap.ts": [
+          136,
+          151
+        ],
+        "src/cli.ts": [
+          74,
+          86
+        ]
+      },
+      "path": "src/bootstrap.ts",
+      "symbol": "bootstrap",
+      "line": 141
+    }
+  ]
+}

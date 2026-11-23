@@ -1,0 +1,118 @@
+{
+  "revision": "c25e2c45990e8d24d8c00f4000613b6f75eee8ea",
+  "cases": [
+    {
+      "id": "r31-store-only-history",
+      "effort": "low",
+      "question": "Every commit in a repository so far touched only the .truthiness directory. Quote the line that supplies a revision for evidence in that case.",
+      "sources": {
+        "src/agent.ts": [
+          26,
+          41
+        ],
+        "src/hook.ts": [
+          30,
+          43
+        ]
+      },
+      "path": "src/agent.ts",
+      "symbol": "sourceRevision",
+      "line": 35
+    },
+    {
+      "id": "r31-outside-repository",
+      "effort": "low",
+      "question": "The hook runs outside any Git repository, but TRUTHINESS_STORE names an existing file, so the repository root is undefined. Quote the line that yields no edited paths.",
+      "sources": {
+        "src/hook.ts": [
+          45,
+          53
+        ],
+        "src/agent.ts": [
+          41,
+          52
+        ]
+      },
+      "path": "src/hook.ts",
+      "symbol": "postEdit",
+      "line": 48,
+      "answer_format": "Also return unknown_target_warning_emitted as a JSON boolean: whether the post-edit handler prints the generic unknown-target warning.",
+      "expected_fields": {
+        "unknown_target_warning_emitted": true
+      }
+    },
+    {
+      "id": "r31-indented-excerpt",
+      "effort": "low",
+      "question": "A one-line excerpt \"return value;\" is indented by four spaces in the committed source. Quote the line of the source-matching function that lets it match despite the indentation.",
+      "sources": {
+        "src/review.ts": [
+          109,
+          145
+        ],
+        "src/lookup.ts": [
+          130,
+          147
+        ]
+      },
+      "path": "src/review.ts",
+      "symbol": "matchesSource",
+      "line": 143
+    },
+    {
+      "id": "r31-support-and-disproof",
+      "effort": "low",
+      "question": "A claim has three applicable relations at the query scope and revision: A (supports, event e1, observation o-a), B (supports, event e2, observation o-b) and C (disproves, event e3, observation o-c). None resolves anything. Which status results and why? Quote the line that decides it.",
+      "sources": {
+        "src/lookup.ts": [
+          130,
+          171
+        ],
+        "src/store.ts": [
+          262,
+          268
+        ]
+      },
+      "path": "src/lookup.ts",
+      "symbol": "assess",
+      "line": 165,
+      "reference": "Supports and disproves outcomes together count as conflicting evidence, so the claim is recheck_required rather than retired."
+    },
+    {
+      "id": "r31-already-checked-revision",
+      "effort": "low",
+      "question": "The store already holds an observation from a recheck session for the current revision. Quote the line in bootstrapStore that then skips seeding landmarks.",
+      "sources": {
+        "src/cli.ts": [
+          67,
+          94
+        ],
+        "src/bootstrap.ts": [
+          164,
+          177
+        ]
+      },
+      "path": "src/cli.ts",
+      "symbol": "bootstrapStore",
+      "line": 70
+    },
+    {
+      "id": "r31-duplicate-declaration",
+      "effort": "low",
+      "question": "A file contains the same qualifying declaration line twice. Quote the line that drops it from the landmark candidates.",
+      "sources": {
+        "src/bootstrap.ts": [
+          70,
+          92
+        ],
+        "src/store.ts": [
+          137,
+          148
+        ]
+      },
+      "path": "src/bootstrap.ts",
+      "symbol": "notesIn",
+      "line": 91
+    }
+  ]
+}

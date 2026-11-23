@@ -1,7 +1,7 @@
 ---
 name: skillopt-rollout
 description: Answer one fixed SkillOpt benchmark prompt without tools.
-model: openai-codex/gpt-6-luna
+model: anthropic/claude-haiku-5-5
 thinking-level: low
 tools: []
 prewalk: false

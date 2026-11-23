@@ -1,0 +1,126 @@
+{
+  "revision": "c25e2c45990e8d24d8c00f4000613b6f75eee8ea",
+  "cases": [
+    {
+      "id": "r30-hidden-pending-count",
+      "effort": "low",
+      "question": "Twelve claims are pending for the same reason. Quote the line that computes how many ids are left out of the listed ids.",
+      "sources": {
+        "src/agent.ts": [
+          124,
+          143
+        ],
+        "src/review.ts": [
+          11,
+          13
+        ]
+      },
+      "path": "src/agent.ts",
+      "symbol": "formatPendingReasons",
+      "line": 140,
+      "answer_format": "Also return hidden_count, the integer shown after \"and\" in the message for that reason.",
+      "expected_fields": {
+        "hidden_count": 2
+      }
+    },
+    {
+      "id": "r30-anchor-lookup-failed",
+      "effort": "low",
+      "question": "The anchors worker fails while the hook handles an edit to a tracked file. Quote the hook line that selects the generic unknown-target warning instead of a path-specific one.",
+      "sources": {
+        "src/hook.ts": [
+          45,
+          53
+        ],
+        "src/agent.ts": [
+          68,
+          85
+        ]
+      },
+      "path": "src/hook.ts",
+      "symbol": "postEdit",
+      "line": 51
+    },
+    {
+      "id": "r30-orphan-observation",
+      "effort": "low",
+      "question": "A batch holds one claim with valid supporting evidence plus an observation that no evidence_for record uses. Quote the line that rejects the whole batch for this.",
+      "sources": {
+        "src/review.ts": [
+          90,
+          134
+        ],
+        "src/store.ts": [
+          71,
+          77
+        ]
+      },
+      "path": "src/review.ts",
+      "symbol": "groupEvidence",
+      "line": 105
+    },
+    {
+      "id": "r30-withdrawn-support",
+      "effort": "low",
+      "question": "A claim has exactly two applicable relations at the query scope and revision: S (supports, event s, observation o-s) and W (inconclusive, event w, observation o-w, resolves [\"S\"]). Quote the line that returns the assessment.",
+      "sources": {
+        "src/lookup.ts": [
+          130,
+          171
+        ],
+        "src/store.ts": [
+          270,
+          278
+        ]
+      },
+      "path": "src/lookup.ts",
+      "symbol": "assess",
+      "line": 164,
+      "answer_format": "Also return result as an object with a status string and a sorted evidence_ids array of strings.",
+      "expected_fields": {
+        "result": {
+          "status": "recheck_required",
+          "evidence_ids": [
+            "o-w"
+          ]
+        }
+      }
+    },
+    {
+      "id": "r30-oversized-pending-file",
+      "effort": "low",
+      "question": "A pending batch file is larger than 16 MiB. Quote the line that rejects it before its contents are read.",
+      "sources": {
+        "src/cli.ts": [
+          96,
+          114
+        ],
+        "src/agent.ts": [
+          87,
+          112
+        ]
+      },
+      "path": "src/cli.ts",
+      "symbol": "reviewPending",
+      "line": 98
+    },
+    {
+      "id": "r30-id-already-stored",
+      "effort": "low",
+      "question": "A publication batch contains a record whose id already exists in the store. Quote the line that throws for it when the batch is merged.",
+      "sources": {
+        "src/store.ts": [
+          280,
+          287
+        ],
+        "src/cli.ts": [
+          107,
+          114
+        ]
+      },
+      "path": "src/store.ts",
+      "symbol": "mergeRecords",
+      "line": 283
+    }
+  ]
+}

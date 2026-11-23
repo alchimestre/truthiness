@@ -1,0 +1,114 @@
+{
+  "revision": "c25e2c45990e8d24d8c00f4000613b6f75eee8ea",
+  "cases": [
+    {
+      "id": "r28-relative-edit-target",
+      "effort": "low",
+      "question": "An edit tool reports a relative path while the hook runs from a subdirectory. Quote the line that resolves that path against the hook's working directory before it is made relative to the repository root. Do not quote the caller.",
+      "sources": {
+        "src/agent.ts": [
+          54,
+          66
+        ],
+        "src/hook.ts": [
+          45,
+          53
+        ]
+      },
+      "path": "src/agent.ts",
+      "symbol": "repositoryRelative",
+      "line": 56
+    },
+    {
+      "id": "r28-notebook-edit-target",
+      "effort": "low",
+      "question": "A Claude Code notebook edit call supplies only a notebook_path field. Quote the line that collects that path as an edit target, not the line that reads patch text.",
+      "sources": {
+        "src/hook.ts": [
+          45,
+          62
+        ],
+        "src/agent.ts": [
+          54,
+          66
+        ]
+      },
+      "path": "src/hook.ts",
+      "symbol": "editTargets",
+      "line": 59
+    },
+    {
+      "id": "r28-check-bearing-claim",
+      "effort": "low",
+      "question": "A proposed claim carries a non-null check string and has one otherwise valid supporting observation at the current revision. Where is it rejected, and with which pending reason? Quote the decisive line.",
+      "sources": {
+        "src/review.ts": [
+          109,
+          139
+        ],
+        "src/lookup.ts": [
+          130,
+          147
+        ]
+      },
+      "path": "src/review.ts",
+      "symbol": "verifyClaim",
+      "line": 111,
+      "reference": "A claim whose check is not null is rejected at once with invalid_evidence, before any excerpt is compared with the committed source."
+    },
+    {
+      "id": "r28-narrower-claim-scope",
+      "effort": "low",
+      "question": "A query asks about scope \"repo\" but the claim's scope is a narrower path scope. Quote the line of the assessment function that returns recheck_required for this reason before any evidence relation is examined.",
+      "sources": {
+        "src/lookup.ts": [
+          130,
+          153
+        ],
+        "src/review.ts": [
+          109,
+          139
+        ]
+      },
+      "path": "src/lookup.ts",
+      "symbol": "assess",
+      "line": 133
+    },
+    {
+      "id": "r28-nothing-approved",
+      "effort": "low",
+      "question": "A review approves no claims, so its approved batch is the empty string. Quote the line that makes the publishing helper return zero before it reads the store.",
+      "sources": {
+        "src/cli.ts": [
+          96,
+          114
+        ],
+        "src/review.ts": [
+          15,
+          53
+        ]
+      },
+      "path": "src/cli.ts",
+      "symbol": "publishNew",
+      "line": 108
+    },
+    {
+      "id": "r28-digest-mismatch",
+      "effort": "low",
+      "question": "publish is called with a digest computed over a different payload than the batch being published. Quote the line that rejects it, not the line that calls the checker.",
+      "sources": {
+        "src/store.ts": [
+          43,
+          77
+        ],
+        "src/review.ts": [
+          201,
+          203
+        ]
+      },
+      "path": "src/store.ts",
+      "symbol": "checkBatch",
+      "line": 73
+    }
+  ]
+}
