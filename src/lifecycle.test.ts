@@ -78,6 +78,11 @@ test("keeps the default store inside each repository and stays silent outside on
             expect(startup.message.content).not.toContain(`# Guide ${1 - position}`);
         }
         for (const repo of repos) expect(existsSync(join(repo, ".truthiness", "canonical.jsonl"))).toBe(true);
+        git(repos[0], "add", ".truthiness");
+        git(repos[0], "commit", "-m", "Store");
+        const afterStoreCommit = await handlers.get("before_agent_start")({}, session(repos[0]));
+        expect(afterStoreCommit.message.content).toContain("# Guide 0");
+        expect(git(repos[0], "status", "--porcelain")).toBe("");
         const outside = join(root, "plain");
         mkdirSync(outside);
         expect(await handlers.get("tool_call")({ toolName: "edit" }, session(outside))).toBeUndefined();

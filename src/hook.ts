@@ -2,7 +2,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { anchoredPathsOf, anchoredWarning, cleanHead, command, defaultProgram, defaultTokenizer, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "./agent.ts";
+import { anchoredPathsOf, anchoredWarning, cleanSourceRevision, command, defaultProgram, defaultTokenizer, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "./agent.ts";
 
 type HookInput = { cwd?: unknown; tool_input?: unknown };
 
@@ -29,7 +29,7 @@ function parseHookInput(text: string): { cwd: string; toolInput: unknown } {
 
 async function sessionStart({ cwd }: { cwd: string }) {
     const { store } = memoryPaths(cwd);
-    const head = cleanHead(cwd);
+    const head = cleanSourceRevision(cwd);
     if (!store || !head) return;
     if (process.env.TRUTHINESS_BOOTSTRAP !== "off") {
         await runWorker(program, ["bootstrap", store], { cwd, timeout: 15_000 }).catch(() => warn("Truthiness could not bootstrap project memory."));

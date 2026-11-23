@@ -99,8 +99,8 @@ An integration runs three CLI commands at the right moments:
 
 | When | Run | Then |
 | --- | --- | --- |
-| Session start, clean working tree | `truthiness bootstrap STORE`, then `truthiness index STORE "" REVISION TOKENIZER` | Add the index output to the agent's context. |
-| The agent proposes notes | Remove secrets from the notes, then pipe them to `truthiness stage PENDING_FILE` and run `truthiness review-pending STORE PENDING_FILE` | Notes whose quote is found at `HEAD` are published; the rest stay pending. |
+| Session start, clean working tree | `truthiness bootstrap STORE`, then `truthiness index STORE "" REVISION TOKENIZER` | Add the index output to the agent's context. `REVISION` is the last commit outside `.truthiness/`: `git log -1 --format=%H -- ':(top)' ':(top,exclude).truthiness'`. |
+| The agent proposes notes | Remove secrets from the notes, then pipe them to `truthiness stage PENDING_FILE` and run `truthiness review-pending STORE PENDING_FILE` | Notes whose quote is found at `REVISION` are published; the rest stay pending. |
 | The agent edits a file | `truthiness anchors STORE` lists the files that notes quote | If the file is listed, remind the agent to re-read it. |
 
 A proposed note is three JSONL records; see [Writing notes](#writing-notes). The secret check before publishing is partial, so the integration must remove secrets itself.
@@ -177,7 +177,7 @@ All integrations keep the store in `.truthiness/canonical.jsonl` at the reposito
 
 ## Writing notes
 
-A note is three JSONL records, one per line: the `claim` (the fact), the `observation` (the quoted code) and an `evidence_for` linking them. Replace `REVISION` with the output of `git rev-parse HEAD`:
+A note is three JSONL records, one per line: the `claim` (the fact), the `observation` (the quoted code) and an `evidence_for` linking them. Replace `REVISION` with the output of `git log -1 --format=%H -- ':(top)' ':(top,exclude).truthiness'`, the last commit that changed anything outside the store:
 
 ```jsonl
 {"id":"retry-limit","kind":"claim","text":"src/config.ts: export const RETRY_LIMIT = 3;","scope":"repo","anchors":[{"path":"src/config.ts"}],"check":null,"recorded_at":"2026-11-22T18:00:00Z","recorded_by":"agent"}
@@ -195,7 +195,7 @@ A note is three JSONL records, one per line: the `claim` (the fact), the `observ
 | `observation.context` | `revision` is `REVISION`; `source_event_id` and `check_session` are any non-empty strings. |
 | `evidence_for.assessment` | `outcome` is `"supports"`, `scope` equals the claim's `scope`, `revision` is `REVISION`. |
 
-`REVISION` must be `HEAD` when the note is reviewed, so commit first and write notes against the new `HEAD`. Every observation must be linked to a claim, and a batch may only contain these three kinds of record.
+`REVISION` must still be the last commit outside `.truthiness/` when the note is reviewed, so commit the code first and write notes against that commit. Committing only the store does not change `REVISION`. Every observation must be linked to a claim, and a batch may only contain these three kinds of record.
 
 Two kinds of note:
 
