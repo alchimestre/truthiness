@@ -99,7 +99,7 @@ An integration runs three CLI commands at the right moments:
 
 | When | Run | Then |
 | --- | --- | --- |
-| Session start, clean working tree | `truthiness bootstrap STORE`, then `truthiness index STORE "" REVISION TOKENIZER` | Add the index output to the agent's context. `REVISION` is the last commit outside `.truthiness/`: `git log -1 --format=%H -- ':(top)' ':(top,exclude).truthiness'`. |
+| Session start, clean working tree | `truthiness bootstrap STORE`, then `truthiness index STORE "" REVISION TOKENIZER` | Add the index output to the agent's context. `REVISION` is the last commit outside `.truthiness/`: `git --no-replace-objects log -1 --format=%H -- ':(top)' ':(top,exclude).truthiness'`. |
 | The agent proposes notes | Remove secrets from the notes, then pipe them to `truthiness stage PENDING_FILE` and run `truthiness review-pending STORE PENDING_FILE` | Notes whose quote is found at `REVISION` are published; the rest stay pending. |
 | The agent edits a file | `truthiness anchors STORE` lists the files that notes quote | If the file is listed, remind the agent to re-read it. |
 
@@ -177,7 +177,7 @@ All integrations keep the store in `.truthiness/canonical.jsonl` at the reposito
 
 ## Writing notes
 
-A note is three JSONL records, one per line: the `claim` (the fact), the `observation` (the quoted code) and an `evidence_for` linking them. Replace `REVISION` with the output of `git log -1 --format=%H -- ':(top)' ':(top,exclude).truthiness'`, the last commit that changed anything outside the store:
+A note is three JSONL records, one per line: the `claim` (the fact), the `observation` (the quoted code) and an `evidence_for` linking them. Replace `REVISION` with the output of `git --no-replace-objects log -1 --format=%H -- ':(top)' ':(top,exclude).truthiness'`, the last commit that changed anything outside the store:
 
 ```jsonl
 {"id":"retry-limit","kind":"claim","text":"src/config.ts: export const RETRY_LIMIT = 3;","scope":"repo","anchors":[{"path":"src/config.ts"}],"check":null,"recorded_at":"2026-11-22T18:00:00Z","recorded_by":"agent"}
