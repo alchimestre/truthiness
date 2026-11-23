@@ -165,13 +165,13 @@ There is no per-session on/off switch; remove the hook entries to turn Truthines
 
 ### Settings
 
-All integrations keep the store in `${XDG_STATE_HOME:-~/.local/state}/truthiness/<repo>-<hash>/`, so OMP, Claude Code and Codex share one store per repository.
+All integrations keep the store in `.truthiness/canonical.jsonl` at the repository root, so OMP, Claude Code and Codex share one store per repository. Commit it with the code it describes; uncommitted changes under `.truthiness/` do not block the startup index. Drafts awaiting review stay in `.git/truthiness/pending`, outside version control.
 
 | Variable | Default |
 | --- | --- |
 | `TRUTHINESS_COMMAND` | `src/cli.ts` in this checkout |
-| `TRUTHINESS_STORE` | `$XDG_STATE_HOME/truthiness/<repo>-<hash>/canonical.jsonl` |
-| `TRUTHINESS_PENDING` | `$XDG_STATE_HOME/truthiness/<repo>-<hash>/pending` |
+| `TRUTHINESS_STORE` | `<repo>/.truthiness/canonical.jsonl` |
+| `TRUTHINESS_PENDING` | `<git dir>/truthiness/pending` |
 | `TRUTHINESS_TOKENIZER` | `scripts/truthiness-tokenizer.sh` |
 | `TRUTHINESS_BOOTSTRAP` | on; `off` skips seeding and the startup recheck |
 
