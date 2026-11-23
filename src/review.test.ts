@@ -134,7 +134,9 @@ test("bootstrap uses ignored notes as leads, not as evidence", () => {
         expect(seeded).toContain("z-important.md: The parser accepts strings.");
         expect(seeded).not.toContain("The parser accepts anything.");
         expect(seeded).not.toContain("False guide");
-        git(cwd, "commit", "--allow-empty", "-qm", "New revision");
+        writeFileSync(join(cwd, "later.txt"), "changed\n");
+        git(cwd, "add", "later.txt");
+        git(cwd, "commit", "-qm", "New revision");
         const second = Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl"], { cwd });
         expect(second.exitCode).toBe(0);
         expect(readFileSync(join(cwd, "canonical.jsonl"), "utf8")).not.toBe(seeded);
@@ -145,7 +147,9 @@ test("staged source evidence at a past revision does not publish at HEAD", () =>
     fixture((cwd, revision) => {
         const path = join(cwd, "pending.jsonl");
         writeFileSync(path, batch(revision, "quote", `parser.js: ${excerpt}`));
-        git(cwd, "commit", "--allow-empty", "-qm", "New revision");
+        writeFileSync(join(cwd, "later.txt"), "changed\n");
+        git(cwd, "add", "later.txt");
+        git(cwd, "commit", "-qm", "New revision");
         expect(reviewPending(cwd, path)).toEqual({ published: 0, pending: 1 });
     });
 });
