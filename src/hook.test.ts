@@ -17,7 +17,7 @@ function git(...args: string[]) {
 }
 
 function runHook(event: string, input: string) {
-    const environment: Record<string, string | undefined> = { ...process.env, XDG_STATE_HOME: join(root, "state"), TRUTHINESS_REVIEWER: "" };
+    const environment: Record<string, string | undefined> = { ...process.env, TRUTHINESS_REVIEWER: "" };
     for (const key of ["TRUTHINESS_STORE", "TRUTHINESS_PENDING", "TRUTHINESS_COMMAND", "TRUTHINESS_TOKENIZER", "TRUTHINESS_BOOTSTRAP"]) delete environment[key];
     const output = Bun.spawnSync([hook, event], { cwd: repo, stdin: Buffer.from(input), env: environment });
     const stderr = output.stderr.toString();
