@@ -193,6 +193,22 @@ test("bootstrap uses ignored notes as leads, not as evidence", () => {
     });
 });
 
+test("bootstrap skips paths with the truthiness attribute unset", () => {
+    fixture((cwd) => {
+        mkdirSync(join(cwd, "bench"));
+        writeFileSync(join(cwd, "bench", "fixture.md"), "# Planted fixture\nThe parser rejects strings.\n");
+        writeFileSync(join(cwd, "guide.md"), "# Real guide\nThe parser accepts strings.\n");
+        writeFileSync(join(cwd, ".gitattributes"), "bench/** -truthiness\n");
+        git(cwd, "add", ".");
+        git(cwd, "commit", "-qm", "Fixture");
+        const run = Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl"], { cwd });
+        expect(run.exitCode).toBe(0);
+        const seeded = readFileSync(join(cwd, "canonical.jsonl"), "utf8");
+        expect(seeded).toContain("guide.md: # Real guide");
+        expect(seeded).not.toContain("bench/fixture.md");
+    });
+});
+
 test("staged source evidence at a past revision does not publish at HEAD", () => {
     fixture((cwd, revision) => {
         const path = join(cwd, "pending.jsonl");

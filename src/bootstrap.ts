@@ -18,7 +18,7 @@ const maxExcerpt = 160;
 function sourceFiles(directory: string, revision: string) {
     const tree = checkout(directory, ["ls-tree", "-rlz", "--full-tree", revision]);
     if (tree === undefined) throw new Error("could not read checkout tree");
-    const blobs = tree.split("\0").flatMap(parseTreeEntry);
+    const blobs = withoutExcluded(directory, tree.split("\0").flatMap(parseTreeEntry));
     const leads = scratchLeads(directory, blobs.map(blob => blob.path));
     const ordered = [...blobs.filter(blob => leads.has(blob.path)), ...blobs.filter(blob => !leads.has(blob.path))];
     const maxFiles = 200;
@@ -32,6 +32,22 @@ function sourceFiles(directory: string, revision: string) {
         bytes += blob.size;
     }
     return { sources: readBlobs(directory, selected, maxBytes), leads };
+}
+
+// `.gitattributes` lines like `bench/** -truthiness` keep fixtures and generated files out of seeded notes.
+function withoutExcluded(directory: string, blobs: Blob[]): Blob[] {
+    const root = checkout(directory, ["rev-parse", "--show-toplevel"])?.trim();
+    if (!root || !blobs.length) return blobs;
+    const result = spawnSync("git", ["--no-replace-objects", "-C", root, "check-attr", "-z", "--stdin", "truthiness"], {
+        input: blobs.map(blob => `${blob.path}\0`).join(""), encoding: "utf8", timeout: 5000, maxBuffer: 16 * 1024 * 1024,
+    });
+    if (result.status !== 0) throw new Error("could not read truthiness attributes");
+    const fields = result.stdout.split("\0");
+    const excluded = new Set<string>();
+    for (let index = 0; index + 2 < fields.length; index += 3) {
+        if (fields[index + 2] === "unset") excluded.add(fields[index]);
+    }
+    return blobs.filter(blob => !excluded.has(blob.path));
 }
 
 function parseTreeEntry(entry: string): Blob[] {

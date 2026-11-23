@@ -151,7 +151,7 @@ export TRUTHINESS_REVIEW_COMMAND=llm
 
 | Command | Use |
 | --- | --- |
-| `truthiness bootstrap STORE` | Seed and recheck notes against the latest source commit. |
+| `truthiness bootstrap STORE` | Seed and recheck notes against the latest source commit. Paths with the `truthiness` attribute unset in `.gitattributes` (`bench/** -truthiness`) are not seeded. |
 | `truthiness index STORE SCOPE REVISION TOKENIZER` | Print the startup index. Use `""` for an unscoped index. |
 | `truthiness query STORE TOKENIZER` | Look up notes via a JSON request on stdin (`id`, `sparse`, `flat` or `graph`). |
 | `truthiness anchors STORE` | List files quoted by valid notes. Re-read them before editing. |
