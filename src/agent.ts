@@ -96,8 +96,8 @@ export async function stageAndReview(program: string, cwd: string, store: string
         if (!Number.isSafeInteger(result.published) || result.published < 0 || !Number.isSafeInteger(result.pending) || result.pending < 0) {
             throw new Error("invalid review outcome");
         }
-        if (result.pending === 0 && result.published > 0) {
-            await unlink(path).catch(() => warn("Truthiness published the batch but could not remove its staged copy."));
+        if (result.pending === 0) {
+            await unlink(path).catch(() => warn("Truthiness finished review but could not remove the staged copy."));
         }
         return `${result.published} published, ${result.pending} pending automatic or operator review.`;
     } catch {

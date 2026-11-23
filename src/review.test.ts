@@ -46,7 +46,7 @@ test("automated review does not treat line presence as semantic support", () => 
         const store = readFileSync(join(cwd, "canonical.jsonl"), "utf8");
         expect(store).toContain('"id":"quote"');
         expect(store).not.toContain('"id":"false"');
-        expect(reviewPending(cwd, path)).toEqual({ published: 1, pending: 1 });
+        expect(reviewPending(cwd, path)).toEqual({ published: 0, pending: 1 });
         expect(readFileSync(join(cwd, "canonical.jsonl"), "utf8")).toBe(store);
     });
 });

@@ -277,7 +277,7 @@ The gate hid every planted stale note on both models. Opus solved the same tasks
 | `truthiness query STORE TOKENIZER` | Answer one JSON query from stdin (`id`, `sparse`, `flat` or `graph` mode) within a token budget. |
 | `truthiness anchors STORE` | Print `{"paths":[...]}`: the files quoted by valid notes. |
 | `truthiness stage PENDING_FILE` | Add the JSONL notes on stdin to the pending queue. |
-| `truthiness review-pending STORE PENDING_FILE` | Check pending notes against `HEAD`, publish the ones that hold, print `{"published": N, "pending": M}`. |
+| `truthiness review-pending STORE PENDING_FILE` | Check notes against `HEAD` and print `{"published": N, "pending": M}`. `published` counts newly added claims; `pending` counts claims not approved by this review. |
 | `truthiness publish STORE DIGEST` | Publish an already reviewed batch from stdin. `DIGEST` is the SHA-256 of the reviewed bytes. |
 | `truthiness publish-authorized STORE APPROVAL_FILE` | Publish axioms from stdin. The approval file holds `digest` and `authorityObservationIDs`. |
 | `truthiness axioms STORE SCOPE` | Print the axioms for a scope. |

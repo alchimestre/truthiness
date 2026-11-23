@@ -100,16 +100,17 @@ async function reviewPending(store: string, pending: string, directory: string) 
     const revision = head(directory);
     const result = review(batch, revision, path => readBlob(directory, revision, path), process.env.TRUTHINESS_REVIEWER);
     if (result.approved && head(directory) !== revision) throw new Error("Source revision changed during review; batch remains pending");
-    await publishNew(store, result.approved);
-    console.log(JSON.stringify({ published: result.published, pending: result.pending }));
+    const published = await publishNew(store, result.approved);
+    console.log(JSON.stringify({ published, pending: result.pending }));
 }
 
 async function publishNew(store: string, approved: string) {
-    if (!approved) return;
+    if (!approved) return 0;
     const current = await loadIfPresent(store);
     const additions = Object.values(parseProposal(approved)).filter(record => !isDeepStrictEqual(record, current[record.id]));
     const payload = additions.map(record => `${JSON.stringify(record)}\n`).join("");
     if (payload) await publish(store, payload, digest(payload));
+    return additions.filter(record => record.kind === "claim").length;
 }
 
 async function loadIfPresent(path: string) {

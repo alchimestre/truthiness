@@ -139,6 +139,7 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
     const verified = batch("def handler(request):");
     expect(await submit(verified)).toBe("1 published, 0 pending automatic or operator review.");
     expect(readFileSync(store, "utf8")).toContain('"id":"claim-1"');
+    expect(await submit(verified)).toBe("0 published, 0 pending automatic or operator review.");
     expect(readdirSync(state).filter(file => file.endsWith(".jsonl"))).toHaveLength(2);
     const edit = (path: string) => handlers.get("tool_call")({ toolName: "edit", input: { path } }, ctx);
     expect(await edit("source.py")).toEqual({ additionalContext: expect.stringContaining("notes quote source.py") });
