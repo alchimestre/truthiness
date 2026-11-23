@@ -19,10 +19,18 @@ Experimental · [MIT](LICENSE)
 Requires [Git](https://git-scm.com) and [Bun](https://bun.sh) 1.4.4.
 
 ```sh
-git clone https://github.com/alchimestre/truthiness && cd truthiness && bun link
+bun add -g truthiness
 ```
 
-Use the clone's absolute path in place of `/path/to/truthiness`.
+Check that `bun pm bin -g` prints a directory on your `PATH` so you can run `truthiness` by name.
+
+Print the installed package directory:
+
+```sh
+bun -e 'import { realpathSync } from "node:fs"; import { dirname } from "node:path"; console.log(dirname(dirname(realpathSync(process.argv[1]))));' "$(bun pm bin -g)/truthiness"
+```
+
+Use that directory in place of `/path/to/truthiness` below.
 
 ## Connect your agent
 
