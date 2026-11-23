@@ -1,8 +1,7 @@
 import { execFile, spawnSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
 import { unlink } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -24,21 +23,24 @@ export function anchoredWarning(paths: string[]) {
 }
 
 export function cleanHead(cwd: string) {
-    if (command("git", ["status", "--porcelain", "--untracked-files=all"], cwd) !== "") return undefined;
+    const status = command("git", ["status", "--porcelain", "--untracked-files=all", "--", ":(top)", `:(top,exclude)${storeDirectory}`], cwd);
+    if (status !== "") return undefined;
     return command("git", ["rev-parse", "HEAD"], cwd)?.trim();
 }
 
-const repositoryRoots = new Map<string, string | undefined>();
+const storeDirectory = ".truthiness";
+const repositories = new Map<string, { root: string; gitDirectory: string } | undefined>();
 
 export function memoryPaths(cwd: string) {
-    if (!repositoryRoots.has(cwd)) repositoryRoots.set(cwd, command("git", ["rev-parse", "--show-toplevel"], cwd)?.trim());
-    const root = repositoryRoots.get(cwd);
-    const stateHome = process.env.XDG_STATE_HOME || join(homedir(), ".local", "state");
-    const repository = root && join(stateHome, "truthiness", `${basename(root)}-${createHash("sha256").update(root).digest("hex").slice(0, 12)}`);
+    if (!repositories.has(cwd)) {
+        const [root, gitDirectory] = command("git", ["rev-parse", "--show-toplevel", "--absolute-git-dir"], cwd)?.trim().split("\n") ?? [];
+        repositories.set(cwd, root && gitDirectory ? { root, gitDirectory } : undefined);
+    }
+    const repository = repositories.get(cwd);
     return {
-        root,
-        store: process.env.TRUTHINESS_STORE || (repository && join(repository, "canonical.jsonl")),
-        pending: process.env.TRUTHINESS_PENDING || (repository && join(repository, "pending")),
+        root: repository?.root,
+        store: process.env.TRUTHINESS_STORE || (repository && join(repository.root, storeDirectory, "canonical.jsonl")),
+        pending: process.env.TRUTHINESS_PENDING || (repository && join(repository.gitDirectory, "truthiness", "pending")),
     };
 }
 

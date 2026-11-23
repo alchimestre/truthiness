@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,13 +48,12 @@ test("bootstraps startup memory and reviews staged drafts without a second sessi
     }
 });
 
-test("keeps a separate default store per repository and stays silent outside one", async () => {
+test("keeps the default store inside each repository and stays silent outside one", async () => {
     const root = mkdtempSync(join(tmpdir(), "truthiness-defaults-"));
-    const keys = ["TRUTHINESS_COMMAND", "TRUTHINESS_STORE", "TRUTHINESS_PENDING", "TRUTHINESS_TOKENIZER", "TRUTHINESS_BOOTSTRAP", "XDG_STATE_HOME"];
+    const keys = ["TRUTHINESS_COMMAND", "TRUTHINESS_STORE", "TRUTHINESS_PENDING", "TRUTHINESS_TOKENIZER", "TRUTHINESS_BOOTSTRAP"];
     const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
     try {
         for (const key of keys) delete process.env[key];
-        process.env.XDG_STATE_HOME = join(root, "state");
         const repos = ["a", "b"].map(parent => join(root, parent, "app"));
         for (const [position, repo] of repos.entries()) {
             mkdirSync(repo, { recursive: true });
@@ -78,7 +77,7 @@ test("keeps a separate default store per repository and stays silent outside one
             expect(startup.message.content).toContain(`# Guide ${position}`);
             expect(startup.message.content).not.toContain(`# Guide ${1 - position}`);
         }
-        expect(readdirSync(join(root, "state", "truthiness"))).toHaveLength(2);
+        for (const repo of repos) expect(existsSync(join(repo, ".truthiness", "canonical.jsonl"))).toBe(true);
         const outside = join(root, "plain");
         mkdirSync(outside);
         expect(await handlers.get("tool_call")({ toolName: "edit" }, session(outside))).toBeUndefined();
