@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { anchoredPathsOf, anchoredWarning, cleanHead, command, defaultProgram, defaultTokenizer, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "../../../src/agent.ts";
+import { anchoredPathsOf, anchoredWarning, cleanSourceRevision, command, defaultProgram, defaultTokenizer, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "../../../src/agent.ts";
 
 const messageType = "truthiness-index";
 const modeEntry = "truthiness-mode";
@@ -15,7 +15,7 @@ function editedPaths(input: ToolCallEvent["input"] | undefined, cwd: string, roo
     return repositoryRelative(candidates.filter((value): value is string => typeof value === "string"), cwd, root);
 }
 
-function snapshot(cwd: string, store: string, head = cleanHead(cwd)) {
+function snapshot(cwd: string, store: string, head = cleanSourceRevision(cwd)) {
     if (!head) return undefined;
     try {
         const digest = createHash("sha256").update(readFileSync(resolve(cwd, store))).digest("hex");
@@ -98,7 +98,7 @@ function registerDraftTool(hook: Hook) {
 async function startupIndex(hook: Hook, ctx: Session) {
     if (!hook.enabled) return;
     const { store } = memoryPaths(ctx.cwd);
-    const head = cleanHead(ctx.cwd);
+    const head = cleanSourceRevision(ctx.cwd);
     if (!store || !head) return;
     if (process.env.TRUTHINESS_BOOTSTRAP !== "off") {
         const bootstrap = runWorker(hook.program, ["bootstrap", store], { cwd: ctx.cwd, timeout: 15_000 });

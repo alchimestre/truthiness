@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
-import { bootstrap, checkedAt, checkout, readBlob } from "./bootstrap.ts";
+import { sourceRevision } from "./agent.ts";
+import { bootstrap, checkedAt, readBlob } from "./bootstrap.ts";
 import { load, parseProposal, publish, publishAuthorized, stage, type Graph } from "./store.ts";
 import { anchoredPaths, index, query } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
@@ -98,7 +99,7 @@ async function reviewPending(store: string, pending: string, directory: string) 
     const batch = decodeInput(await readFile(pending));
     const revision = head(directory);
     const result = review(batch, revision, path => readBlob(directory, revision, path), process.env.TRUTHINESS_REVIEWER);
-    if (result.approved && head(directory) !== revision) throw new Error("HEAD changed during review; batch remains pending");
+    if (result.approved && head(directory) !== revision) throw new Error("Source revision changed during review; batch remains pending");
     await publishNew(store, result.approved);
     console.log(JSON.stringify({ published: result.published, pending: result.pending }));
 }
@@ -121,7 +122,7 @@ async function loadIfPresent(path: string) {
 }
 
 function head(directory: string): string {
-    const revision = checkout(directory, ["rev-parse", "--verify", "HEAD^{commit}"])?.trim();
+    const revision = sourceRevision(directory);
     if (!revision) throw new Error("a Git checkout with a commit is required");
     return revision;
 }
