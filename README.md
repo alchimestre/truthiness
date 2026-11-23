@@ -1,4 +1,6 @@
-# Truthiness
+<p align="center">
+  <img src="assets/hero.svg" width="100%" alt="Truthiness: project memory for coding agents. The preview shows current notes and a hidden stale note.">
+</p>
 
 Truthiness is Git-backed memory for coding agents. It shows agents notes backed by committed evidence and hides notes when that evidence changes.
 
@@ -13,6 +15,12 @@ git clone https://github.com/alchimestre/truthiness && cd truthiness && bun link
 ```
 
 Use the clone's absolute path in place of `/path/to/truthiness` below.
+
+## How notes stay current
+
+<p align="center">
+  <img src="assets/lifecycle.svg" width="100%" alt="Across three commits: save a note with its source quote, show it while the quote matches, hide it when the quote changes.">
+</p>
 
 ## Connect your agent
 
