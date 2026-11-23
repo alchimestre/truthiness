@@ -22,10 +22,16 @@ export function anchoredWarning(paths: string[]) {
     return `Truthiness notes quote ${paths.join(", ")}. After this edit, re-read the file before repeating or acting on those notes. The edit is not blocked.`;
 }
 
-export function cleanHead(cwd: string) {
+export function cleanSourceRevision(cwd: string) {
     const status = command("git", ["status", "--porcelain", "--untracked-files=all", "--", ":(top)", `:(top,exclude)${storeDirectory}`], cwd);
     if (status !== "") return undefined;
-    return command("git", ["rev-parse", "HEAD"], cwd)?.trim();
+    return sourceRevision(cwd);
+}
+
+// Evidence is keyed to this, not HEAD: a commit touching only the store must not make every note stale.
+export function sourceRevision(cwd: string) {
+    const lastSourceChange = command("git", ["log", "-1", "--format=%H", "HEAD", "--", ":(top)", `:(top,exclude)${storeDirectory}`], cwd)?.trim();
+    return lastSourceChange || command("git", ["rev-parse", "--verify", "HEAD^{commit}"], cwd)?.trim();
 }
 
 const storeDirectory = ".truthiness";
