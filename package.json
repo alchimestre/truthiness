@@ -3,7 +3,10 @@
   "version": "0.1.1",
   "description": "Git-backed memory for coding agents",
   "license": "MIT",
-  "repository": "github:alchimestre/truthiness",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alchimestre/truthiness.git"
+  },
   "files": [
     "src/agent.ts",
     "src/axioms.ts",
@@ -21,8 +24,14 @@
   ],
   "type": "module",
   "packageManager": "bun@1.4.4",
-  "bin": { "truthiness": "./src/cli.ts" },
-  "scripts": { "truthiness": "bun src/cli.ts", "test": "bun test", "typecheck": "tsc" },
+  "bin": {
+    "truthiness": "src/cli.ts"
+  },
+  "scripts": {
+    "truthiness": "bun src/cli.ts",
+    "test": "bun test",
+    "typecheck": "tsc"
+  },
   "devDependencies": {
     "@oh-my-pi/pi-coding-agent": "19.0.1",
     "@types/bun": "1.4.4",
