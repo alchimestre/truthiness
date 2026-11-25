@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, rmdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { appendFile, mkdir, open, readFile, rename, rm, rmdir } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 
 type DataObject = { [field: string]: unknown };
 type StoreRecord = DataObject & { id: string; kind: string; recorded_at: string; recorded_by: string };
@@ -8,6 +8,8 @@ export type Graph = Record<string, StoreRecord>;
 
 const relationshipKinds = new Set(["evidence_for", "depends_on", "conflicts_with", "supersedes"]);
 const contextFields = new Set(["procedure", "revision", "source_digest", "block_sha256", "conditions", "source_event_id", "check_session"]);
+export const storeDirectory = ".truthiness";
+const rechecksPattern = "*.rechecks.jsonl";
 const recordFields: Record<string, Set<string>> = {
     axiom: new Set(["text", "scope", "anchors", "root_authority_ref"]),
     claim: new Set(["text", "scope", "anchors", "check"]),
@@ -19,7 +21,7 @@ const recordFields: Record<string, Set<string>> = {
 };
 
 export async function load(path: string): Promise<Graph> {
-    const graph = decodeRecords(await readFile(path));
+    const graph = withRechecks(decodeRecords(await readFile(path)), await readRecordsIfExists(rechecksPath(path)));
     validateGraph(graph);
     return graph;
 }
@@ -48,6 +50,21 @@ export async function publish(path: string, payload: string, expectedDigest: str
         }
     }
     await writeBatch(path, proposed);
+}
+
+/** Recheck results are local and derived from the store, so they stay out of the committed file. */
+export async function publishRechecks(path: string, payload: string): Promise<void> {
+    const proposed = parseProposal(payload);
+    if (Object.values(proposed).some(record => record.kind !== "observation" && record.kind !== "evidence_for")) {
+        throw new Error("rechecks hold only observations and evidence links");
+    }
+    const overlayPath = rechecksPath(path);
+    if (basename(dirname(path)) === storeDirectory) await ignoreRechecks(dirname(path));
+    await withLock(overlayPath, async () => {
+        const overlay = mergeRecords(await readRecordsIfExists(overlayPath), proposed);
+        validateGraph(withRechecks(await readRecordsIfExists(path), overlay));
+        await atomicWrite(overlayPath, encodeGraph(overlay));
+    });
 }
 
 export type PublicationApproval = { digest: string; authorityObservationIDs: string[] };
@@ -299,6 +316,27 @@ async function readRecordsIfExists(path: string): Promise<Graph> {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return Object.create(null) as Graph;
         throw error;
     }
+}
+
+function rechecksPath(path: string): string {
+    return path.replace(/(?:\.jsonl)?$/, ".rechecks.jsonl");
+}
+
+// Rechecks for claims that exist only on another branch would dangle here, so they are skipped.
+function withRechecks(canonical: Graph, overlay: Graph): Graph {
+    const links = Object.values(overlay).filter(record => record.kind === "evidence_for" && Object.hasOwn(canonical, String(record.to)));
+    const observations = links.map(link => overlay[String(link.from)]).filter(observation => observation !== undefined);
+    return mergeRecords(canonical, Object.fromEntries([...links, ...observations].map(record => [record.id, record])));
+}
+
+async function ignoreRechecks(directory: string): Promise<void> {
+    const ignorePath = join(directory, ".gitignore");
+    const current = await readFile(ignorePath, "utf8").catch(error => {
+        if (error?.code === "ENOENT") return "";
+        throw error;
+    });
+    if (current.split("\n").includes(rechecksPattern)) return;
+    await appendFile(ignorePath, `${current && !current.endsWith("\n") ? "\n" : ""}${rechecksPattern}\n`);
 }
 
 

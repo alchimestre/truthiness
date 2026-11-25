@@ -189,7 +189,8 @@ test("bootstrap uses ignored notes as leads, not as evidence", () => {
         git(cwd, "commit", "-qm", "New revision");
         const second = Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl"], { cwd });
         expect(second.exitCode).toBe(0);
-        expect(readFileSync(join(cwd, "canonical.jsonl"), "utf8")).not.toBe(seeded);
+        expect(readFileSync(join(cwd, "canonical.jsonl"), "utf8")).toBe(seeded);
+        expect(readFileSync(join(cwd, "canonical.rechecks.jsonl"), "utf8")).toContain("Source excerpt still present");
     });
 });
 
@@ -246,7 +247,7 @@ function commitParser(cwd: string, source: string) {
 function recheckedAt(cwd: string, reviewer: string, revision: string) {
     const run = Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl"], { cwd, env: { ...process.env, TRUTHINESS_REVIEWER: reviewer } });
     expect(run.exitCode).toBe(0);
-    const store = readFileSync(join(cwd, "canonical.jsonl"), "utf8");
+    const store = readFileSync(join(cwd, "canonical.rechecks.jsonl"), "utf8");
     const rechecked = (id: string) => store.includes(`"id":"${id}-recheck-${revision.slice(0, 12)}-0"`);
     return { quote: rechecked("quote"), behavior: rechecked("behavior") };
 }

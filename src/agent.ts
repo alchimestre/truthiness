@@ -6,6 +6,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { PendingReason } from "./review.ts";
+import { storeDirectory } from "./store.ts";
 
 export const unknownTargetWarning = "Truthiness notes may quote the file this edit changes. After the edit, re-read that file before repeating or acting on its notes. The edit is not blocked.";
 export const defaultProgram = fileURLToPath(new URL("./cli.ts", import.meta.url));
@@ -35,7 +36,6 @@ export function sourceRevision(cwd: string) {
     return lastSourceChange || command("git", ["rev-parse", "--verify", "HEAD^{commit}"], cwd)?.trim();
 }
 
-const storeDirectory = ".truthiness";
 const repositories = new Map<string, { root: string; gitDirectory: string } | undefined>();
 
 export function memoryPaths(cwd: string) {

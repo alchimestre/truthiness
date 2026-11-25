@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { load, publish, publishAuthorized, stage } from "./store.ts";
+import { load, publish, publishAuthorized, publishRechecks, stage } from "./store.ts";
 
 const observation = record("observation", "obs", {
     content: "checked", source_ref: "README.md", captured_at: "2026-11-20T00:00:00Z", context: {},
@@ -37,6 +37,29 @@ describe("memory store", () => {
         const graph = await load(path);
         expect(Object.keys(graph)).toHaveLength(3);
         expect(graph.claim.kind).toBe("claim");
+    });
+
+    test("rechecks stay in a local file and skip claims missing from the store", async () => {
+        const path = await tempPath();
+        await writeFile(path, claim("claim"));
+        await publishRechecks(path, observation + record("evidence_for", "edge", { from: "obs", to: "claim", rationale: "recheck" }));
+        expect(await readFile(path, "utf8")).toBe(claim("claim"));
+        expect(Object.keys(await load(path)).sort()).toEqual(["claim", "edge", "obs"]);
+        await writeFile(path, claim("other"));
+        expect(Object.keys(await load(path))).toEqual(["other"]);
+        await expect(publishRechecks(path, claim("extra"))).rejects.toThrow("only observations");
+    });
+
+    test("the default store directory ignores its recheck file without losing existing rules", async () => {
+        const directory = join(await mkdtemp(join(tmpdir(), "truthiness-store-")), ".truthiness");
+        const path = join(directory, "canonical.jsonl");
+        await mkdir(directory);
+        await writeFile(join(directory, ".gitignore"), "local");
+        await writeFile(path, claim("claim"));
+        const recheck = observation + record("evidence_for", "edge", { from: "obs", to: "claim", rationale: "recheck" });
+        await publishRechecks(path, recheck);
+        await publishRechecks(path, recheck.replaceAll('"obs"', '"obs-2"').replace('"edge"', '"edge-2"'));
+        expect(await readFile(join(directory, ".gitignore"), "utf8")).toBe("local\n*.rechecks.jsonl\n");
     });
 
     test("rejects dependency cycles", async () => {

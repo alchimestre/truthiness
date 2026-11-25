@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { sourceRevision } from "./agent.ts";
 import { bootstrap, checkedAt, readBlob } from "./bootstrap.ts";
-import { load, parseProposal, publish, publishAuthorized, stage, type Graph } from "./store.ts";
+import { load, parseProposal, publish, publishAuthorized, publishRechecks, stage, type Graph } from "./store.ts";
 import { anchoredPaths, index, query } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
 import { digest, recheckBatch, review } from "./review.ts";
@@ -89,7 +89,7 @@ async function recheckStore(store: string, directory: string, revision: string) 
     const batch = recheckBatch(await loadIfPresent(store), revision);
     if (!batch) return;
     const result = review(batch, revision, path => readBlob(directory, revision, path), process.env.TRUTHINESS_REVIEWER);
-    await publishNew(store, result.approved);
+    await publishNew(store, result.approved, payload => publishRechecks(store, payload));
     if (result.published) console.log(`Rechecked ${result.published} claims; ${result.pending} need a fresh check.`);
 }
 
@@ -104,12 +104,12 @@ async function reviewPending(store: string, pending: string, directory: string) 
     console.log(JSON.stringify({ published, pending: result.pending, pendingReasons: result.pendingReasons }));
 }
 
-async function publishNew(store: string, approved: string) {
+async function publishNew(store: string, approved: string, write = (payload: string) => publish(store, payload, digest(payload))) {
     if (!approved) return 0;
     const current = await loadIfPresent(store);
     const additions = Object.values(parseProposal(approved)).filter(record => !isDeepStrictEqual(record, current[record.id]));
     const payload = additions.map(record => `${JSON.stringify(record)}\n`).join("");
-    if (payload) await publish(store, payload, digest(payload));
+    if (payload) await write(payload);
     return additions.filter(record => record.kind === "claim").length;
 }
 

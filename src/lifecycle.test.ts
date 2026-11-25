@@ -153,7 +153,7 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
     expect(await handlers.get("tool_call")({ toolName: "edit" }, ctx)).toBeUndefined();
     const refused = await handlers.get("truthiness_draft")("test", { jsonl: verified }, undefined, undefined, ctx);
     expect(refused.content[0].text).toContain("off");
-    expect(readdirSync(state).filter(file => file.endsWith(".jsonl"))).toHaveLength(2);
+    expect(readdirSync(state).filter(file => file.endsWith(".jsonl") && !file.endsWith(".rechecks.jsonl"))).toHaveLength(2);
 
     await command("of");
     expect(notices.at(-1)).toContain("Unknown argument");
