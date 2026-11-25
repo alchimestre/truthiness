@@ -78,7 +78,7 @@ Add to `~/.codex/hooks.json`:
 <details>
 <summary>Settings</summary>
 
-Commit `.truthiness/canonical.jsonl` with your code. Recheck results go to `canonical.rechecks.jsonl` beside it; Truthiness adds `*.rechecks.jsonl` to `.truthiness/.gitignore`, so a custom `TRUTHINESS_STORE` needs that rule added by hand. A fresh clone rechecks at its first startup. Pending drafts stay in the Git directory, outside version control.
+Commit `.truthiness/canonical.jsonl` with your code. Recheck results go to `canonical.rechecks.jsonl` beside it; unless Git already ignores that file, Truthiness adds `*.rechecks.jsonl` to `.truthiness/.gitignore`, so a custom `TRUTHINESS_STORE` needs that rule added by hand. A fresh clone rechecks at its first startup. Pending drafts stay in the Git directory, outside version control.
 
 | Variable | Default |
 | --- | --- |

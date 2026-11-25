@@ -62,6 +62,18 @@ describe("memory store", () => {
         expect(await readFile(join(directory, ".gitignore"), "utf8")).toBe("local\n*.rechecks.jsonl\n");
     });
 
+    test("a repository that already ignores the store directory gets no extra ignore file", async () => {
+        const root = await mkdtemp(join(tmpdir(), "truthiness-repo-"));
+        const directory = join(root, ".truthiness");
+        const path = join(directory, "canonical.jsonl");
+        Bun.spawnSync(["git", "init", "-q"], { cwd: root });
+        await writeFile(join(root, ".gitignore"), "/.truthiness/\n");
+        await mkdir(directory);
+        await writeFile(path, claim("claim"));
+        await publishRechecks(path, observation + record("evidence_for", "edge", { from: "obs", to: "claim", rationale: "recheck" }));
+        expect(await Bun.file(join(directory, ".gitignore")).exists()).toBe(false);
+    });
+
     test("rejects dependency cycles", async () => {
         const path = await tempPath();
         await writeFile(path, claim("a") + claim("b") + record("depends_on", "ab", {

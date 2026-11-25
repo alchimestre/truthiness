@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, open, readFile, rename, rm, rmdir } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -59,7 +60,7 @@ export async function publishRechecks(path: string, payload: string): Promise<vo
         throw new Error("rechecks hold only observations and evidence links");
     }
     const overlayPath = rechecksPath(path);
-    if (basename(dirname(path)) === storeDirectory) await ignoreRechecks(dirname(path));
+    if (basename(dirname(path)) === storeDirectory) await ignoreRechecks(overlayPath);
     await withLock(overlayPath, async () => {
         const overlay = mergeRecords(await readRecordsIfExists(overlayPath), proposed);
         validateGraph(withRechecks(await readRecordsIfExists(path), overlay));
@@ -329,7 +330,9 @@ function withRechecks(canonical: Graph, overlay: Graph): Graph {
     return mergeRecords(canonical, Object.fromEntries([...links, ...observations].map(record => [record.id, record])));
 }
 
-async function ignoreRechecks(directory: string): Promise<void> {
+async function ignoreRechecks(overlayPath: string): Promise<void> {
+    const directory = dirname(overlayPath);
+    if (spawnSync("git", ["check-ignore", "-q", overlayPath], { cwd: directory }).status === 0) return;
     const ignorePath = join(directory, ".gitignore");
     const current = await readFile(ignorePath, "utf8").catch(error => {
         if (error?.code === "ENOENT") return "";
