@@ -60,17 +60,20 @@ export function recheckBatch(store: Graph, revision: string): string {
         if (claim?.kind !== "claim" || claim.check !== null) continue;
         const assessments = links.map(link => link.assessment as Record<string, unknown> | undefined);
         if (assessments.some(assessment => assessment?.outcome !== "supports" || assessment.resolves !== undefined || assessment.revision === revision)) continue;
-        const excerpts = new Map<string, { path: string; content: unknown }>();
+        const excerpts = new Map<string, { path: string; content: unknown; block: unknown }>();
         for (const link of links) {
             const observation = store[String(link.from)];
             const path = String(observation.source_ref).slice(String(observation.source_ref).indexOf(":") + 1);
-            excerpts.set(JSON.stringify([path, observation.content]), { path, content: observation.content });
+            const key = JSON.stringify([path, observation.content]);
+            const block = (observation.context as Record<string, unknown>).block_sha256;
+            excerpts.set(key, { path, content: observation.content, block: excerpts.get(key)?.block ?? block });
         }
         lines.push(claim);
-        for (const [position, { path, content }] of [...excerpts.values()].entries()) {
+        for (const [position, { path, content, block }] of [...excerpts.values()].entries()) {
             const id = `${claimID}-recheck-${revision.slice(0, 12)}-${position}`;
+            const context = { revision, source_event_id: id, check_session: `recheck-${revision}`, ...(block === undefined ? {} : { block_sha256: block }) };
             lines.push(
-                { ...recorded, id, kind: "observation", content, source_ref: `${revision}:${path}`, captured_at: recorded.recorded_at, context: { revision, source_event_id: id, check_session: `recheck-${revision}` } },
+                { ...recorded, id, kind: "observation", content, source_ref: `${revision}:${path}`, captured_at: recorded.recorded_at, context },
                 { ...recorded, id: `${id}-assessment`, kind: "evidence_for", from: id, to: claimID, rationale: "Source excerpt still present", assessment: { outcome: "supports", scope: claim.scope, revision } },
             );
         }
@@ -112,7 +115,7 @@ function verifyClaim(claim: RecordLine, evidence: RecordLine[], graph: Graph, re
     const anchors = claim.anchors as Anchor[];
     const paths = new Map(anchors.map(anchor => [`${revision}:${anchor.path}`, anchor.path]));
     const excerpts: Excerpt[] = [];
-    const records = [claim];
+    const checked: { link: RecordLine; observation: RecordLine; source: string }[] = [];
     for (const link of evidence) {
         const observation = graph[String(link.from)];
         const assessment = link.assessment as Record<string, unknown>;
@@ -124,9 +127,10 @@ function verifyClaim(claim: RecordLine, evidence: RecordLine[], graph: Graph, re
         }
         const content = String(observation.content).replace(/\r\n/g, "\n").replace(/\n$/, "");
         const text = content.includes("\n") ? content : content.trim();
-        if (!text.trim() || !matchesSource(source(path), text)) return "source_mismatch";
+        const committed = source(path);
+        if (committed === undefined || !text.trim() || !matchesSource(committed, text)) return "source_mismatch";
         excerpts.push({ path, text });
-        records.push(link, observation);
+        checked.push({ link, observation, source: committed });
     }
     const evidencedPaths = new Set(excerpts.map(excerpt => excerpt.path));
     if (anchors.some(anchor => !evidencedPaths.has(anchor.path))) return "missing_anchor_coverage";
@@ -135,6 +139,10 @@ function verifyClaim(claim: RecordLine, evidence: RecordLine[], graph: Graph, re
     const exact = claim.scope === "repo" && anchors.length === 1 && anchors[0].symbol === undefined &&
         excerpts.length === 1 && !excerpt.text.includes("\n") && text === `${excerpt.path}: ${excerpt.text}`;
     const candidate = { id: claim.id, text, scope: String(claim.scope), anchors, excerpts };
+    // A bare quote claims only that the line exists; a block digest would hide it on unrelated body edits.
+    const observations = exact ? checked.map(({ observation }) => observation) : withBlockDigests(checked, excerpts);
+    if (!observations) return "source_mismatch";
+    const records = [claim, ...checked.flatMap(({ link }, index) => [link, observations[index]])];
     return { candidate, records, exact };
 }
 
@@ -142,6 +150,47 @@ function matchesSource(source: string | undefined, excerpt: string): boolean {
     if (source === undefined) return false;
     if (!excerpt.includes("\n")) return source.split("\n").some(line => line.trim() === excerpt);
     return `\n${source.replace(/\r\n/g, "\n")}\n`.includes(`\n${excerpt}\n`);
+}
+
+// A quoted line can stay put while the code under it changes, which can falsify a claim about that code.
+function withBlockDigests(checked: { observation: RecordLine; source: string }[], excerpts: Excerpt[]): RecordLine[] | undefined {
+    const observations = checked.map(({ observation, source }, index) => withBlockDigest(observation, excerpts[index].path, excerpts[index].text, source));
+    return observations.every(observation => observation !== undefined) ? observations as RecordLine[] : undefined;
+}
+
+function withBlockDigest(observation: RecordLine, path: string, text: string, source: string): RecordLine | undefined {
+    if (text.includes("\n")) return observation;
+    const context = observation.context as Record<string, unknown>;
+    const digests = blockDigests(source, text, /\.(?:md|markdown)$/.test(path));
+    if (context.block_sha256 !== undefined) return digests.includes(String(context.block_sha256)) ? observation : undefined;
+    if (digests.length !== 1) return observation;
+    return { ...observation, context: { ...context, block_sha256: digests[0] } };
+}
+
+function blockDigests(source: string, quoted: string, markdown: boolean): string[] {
+    const lines = source.replace(/\r\n/g, "\n").split("\n");
+    return lines.flatMap((line, index) => line.trim() === quoted ? [digest(blockAfter(lines, index, markdown).join("\n"))] : []);
+}
+
+function blockAfter(lines: string[], start: number, markdown: boolean): string[] {
+    const level = markdown ? headingLevel(lines[start]) : 0;
+    const indent = indentation(lines[start]);
+    const block: string[] = [];
+    for (const line of lines.slice(start + 1)) {
+        if (!line.trim()) continue;
+        const next = headingLevel(line);
+        if (level ? next > 0 && next <= level : indentation(line) <= indent) break;
+        block.push(line.trimEnd());
+    }
+    return block;
+}
+
+function headingLevel(line: string): number {
+    return /^(#{1,6})\s/.exec(line)?.[1].length ?? 0;
+}
+
+function indentation(line: string): number {
+    return line.length - line.trimStart().length;
 }
 
 function decide(candidates: Candidate[], blobs: Map<string, string | undefined>, reviewer: string): Map<string, boolean> {

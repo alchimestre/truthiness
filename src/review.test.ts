@@ -222,6 +222,35 @@ test("staged source evidence at a past revision does not publish at HEAD", () =>
     });
 });
 
+test("a rewritten body hides a behavioral note whose quoted line survives, not a bare quote or a moved block", () => {
+    const opener = "export function parse(value) {";
+    fixture((cwd, revision) => {
+        const path = join(cwd, "pending.jsonl");
+        const reviewer = join(cwd, "reviewer");
+        writeFileSync(reviewer, "#!/usr/bin/env bun\nconst { candidates } = await Bun.stdin.json();\nconsole.log(JSON.stringify(candidates.map(candidate => candidate.id)));\n", { mode: 0o700 });
+        writeFileSync(path, batch(revision, "quote", `parser.js: ${opener}`, opener) + batch(revision, "behavior", "`parse` returns its argument unchanged.", opener));
+        expect(reviewPending(cwd, path, reviewer)).toMatchObject({ published: 2 });
+        const moved = commitParser(cwd, `export function other() {\n    return 1;\n}\n\n${opener}\n    return value;\n}\n`);
+        expect(recheckedAt(cwd, reviewer, moved)).toEqual({ quote: true, behavior: true });
+        const rewritten = commitParser(cwd, `${opener}\n    return value.trim();\n}\n`);
+        expect(recheckedAt(cwd, reviewer, rewritten)).toEqual({ quote: true, behavior: false });
+    }, `${opener}\n    return value;\n}\n`);
+});
+
+function commitParser(cwd: string, source: string) {
+    writeFileSync(join(cwd, "parser.js"), source);
+    git(cwd, "commit", "-qam", "Edit parser");
+    return git(cwd, "rev-parse", "HEAD");
+}
+
+function recheckedAt(cwd: string, reviewer: string, revision: string) {
+    const run = Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl"], { cwd, env: { ...process.env, TRUTHINESS_REVIEWER: reviewer } });
+    expect(run.exitCode).toBe(0);
+    const store = readFileSync(join(cwd, "canonical.jsonl"), "utf8");
+    const rechecked = (id: string) => store.includes(`"id":"${id}-recheck-${revision.slice(0, 12)}-0"`);
+    return { quote: rechecked("quote"), behavior: rechecked("behavior") };
+}
+
 function reviewPending(cwd: string, path: string, reviewer = "") {
     const result = Bun.spawnSync(["bun", cli, "review-pending", "canonical.jsonl", path], { cwd, env: { ...process.env, TRUTHINESS_REVIEWER: reviewer } });
     expect(result.stderr.toString()).toBe("");

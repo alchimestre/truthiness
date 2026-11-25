@@ -133,6 +133,8 @@ Submit drafts with `truthiness_draft` in OMP or `src/hook.ts draft < notes.jsonl
 
 Use unique record IDs. Each anchor needs its own observation. Keep `claim.check` null and set `evidence_for.assessment.scope` to the claim's scope. If the source revision changes before review, refresh the draft.
 
+When a claim says more than its one-line quote, Truthiness also records a hash of the block that line opens: its indented body, or the section under a Markdown heading. When that block changes, the claim is hidden until it is redrafted, even if the quoted line is still present. A bare `path: line` quote is unaffected.
+
 ### Reviewer
 
 Set `TRUTHINESS_REVIEWER` to an executable that reads JSON and returns a JSON array of approved IDs within 30 seconds. The request includes whole committed files; use a local model if code must stay on the machine.

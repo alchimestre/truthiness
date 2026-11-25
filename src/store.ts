@@ -7,7 +7,7 @@ type StoreRecord = DataObject & { id: string; kind: string; recorded_at: string;
 export type Graph = Record<string, StoreRecord>;
 
 const relationshipKinds = new Set(["evidence_for", "depends_on", "conflicts_with", "supersedes"]);
-const contextFields = new Set(["procedure", "revision", "source_digest", "conditions", "source_event_id", "check_session"]);
+const contextFields = new Set(["procedure", "revision", "source_digest", "block_sha256", "conditions", "source_event_id", "check_session"]);
 const recordFields: Record<string, Set<string>> = {
     axiom: new Set(["text", "scope", "anchors", "root_authority_ref"]),
     claim: new Set(["text", "scope", "anchors", "check"]),
