@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { sourceRevision } from "./agent.ts";
 import { bootstrap, checkedAt, readBlob } from "./bootstrap.ts";
 import { load, parseProposal, publish, publishAuthorized, publishRechecks, stage, type Graph } from "./store.ts";
-import { anchoredPaths, index, query } from "./lookup.ts";
+import { anchoredPaths, index, query, staleDraft } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
 import { digest, recheckBatch, review } from "./review.ts";
 
@@ -12,7 +12,7 @@ const maxProposalBytes = 16 * 1024 * 1024;
 
 async function run(args: string[]) {
     const [command, path, ...options] = args;
-    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE TOKENIZER | index STORE SCOPE REVISION TOKENIZER | anchors STORE | stage PENDING | bootstrap STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE");
+    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE TOKENIZER | index STORE SCOPE REVISION TOKENIZER | stale STORE SCOPE REVISION | anchors STORE | stage PENDING | bootstrap STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE");
     switch (command) {
         case "validate":
             requireOptions(options, 0);
@@ -35,6 +35,10 @@ async function run(args: string[]) {
             process.stdout.write(text);
             return;
         }
+        case "stale":
+            requireOptions(options, 2);
+            process.stdout.write(staleDraft(await load(path), options[0], options[1]));
+            return;
         case "stage":
             requireOptions(options, 0);
             await stage(path, await readInput());

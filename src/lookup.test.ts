@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { anchoredPaths, index, query, type Records, type Request } from "./lookup.ts";
+import { anchoredPaths, index, query, staleClaims, staleDraft, type Records, type Request } from "./lookup.ts";
+import { parseProposal } from "./store.ts";
 
 function records(outcome = "supports", scope = "service A", revision = "abc"): Records {
   return {
@@ -100,6 +101,43 @@ describe("lookup index", () => {
     expect(output).toContain("Omitted eligible entries");
     expect(output.split("\n").filter(Boolean).length).toBeLessThanOrEqual(60);
     expect(() => index(records(), "service A", "abc", () => -1)).toThrow("token counter failed");
+  });
+});
+
+describe("stale notes", () => {
+  function stored(): Records {
+    return {
+      claim: { id: "claim", kind: "claim", text: "src/cache.ts: const ttl = 60;", scope: "service A", anchors: [{ path: "src/cache.ts" }], check: null, recorded_at: "2026-11-20T09:00:00Z", recorded_by: "agent" },
+      observation: { id: "observation", kind: "observation", content: "const ttl = 60;", source_ref: "abc:src/cache.ts", captured_at: "2026-11-20T09:00:00Z", context: { revision: "abc", source_event_id: "event-1", check_session: "agent" }, recorded_at: "2026-11-20T09:00:00Z", recorded_by: "agent" },
+      evidence: { id: "evidence", kind: "evidence_for", from: "observation", to: "claim", rationale: "Quoted line", assessment: { outcome: "supports", scope: "service A", revision: "abc" }, recorded_at: "2026-11-20T09:00:00Z", recorded_by: "agent" },
+    };
+  }
+
+  test("reports once-valid claims as stale and not never-verified ones", () => {
+    const data = stored();
+    data.never = { id: "never", kind: "claim", text: "never checked", scope: "service A" };
+    const output = index(data, "service A", "def", (value) => value.length);
+    expect(output).toContain('Stale notes hidden (1): "claim"');
+    expect(output).not.toContain('"never"');
+    expect(index(data, "service A", "abc", (value) => value.length)).not.toContain("Stale notes");
+  });
+
+  test("orders stale claims by most recent valid evidence, then id", () => {
+    const data = stored();
+    data.older = { id: "older", kind: "claim", text: "older", scope: "service A" };
+    data.olderEvidence = { id: "olderEvidence", kind: "evidence_for", from: "observation", to: "older", rationale: "Quoted line", assessment: { outcome: "supports", scope: "service A", revision: "abc" }, recorded_at: "2026-11-19T09:00:00Z", recorded_by: "agent" };
+    expect(staleClaims(data, "service A", "def")).toEqual(["claim", "older"]);
+  });
+
+  test("drafts a refresh for the top stale claim that the store parses", () => {
+    const proposal = Object.values(parseProposal(staleDraft(stored(), "service A", "def")));
+    expect(proposal.map((record) => record.kind).sort()).toEqual(["claim", "evidence_for", "observation"]);
+    expect(proposal.find((record) => record.kind === "evidence_for")?.to).toBe("claim");
+    expect(proposal.find((record) => record.kind === "observation")?.source_ref).toBe("def:src/cache.ts");
+  });
+
+  test("drafts nothing when no claim is stale", () => {
+    expect(staleDraft(stored(), "service A", "abc")).toBe("");
   });
 });
 
