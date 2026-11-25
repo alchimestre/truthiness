@@ -3,5 +3,5 @@ node_modules/
 __pycache__/
 *.pyc
 /WATCHDOG.yml
-/.truthiness/canonical.jsonl
+/.truthiness/
 .ua
