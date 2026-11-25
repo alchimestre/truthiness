@@ -9,7 +9,7 @@ type Anchor = { path: string; symbol?: string };
 type Candidate = { id: string; text: string; scope: string; anchors: Anchor[]; excerpts: Excerpt[] };
 type ReviewGroup = { candidate: Candidate; records: RecordLine[]; exact: boolean };
 export type PendingReason = "invalid_batch" | "missing_evidence" | "invalid_evidence" | "stale_evidence" |
-    "source_mismatch" | "missing_anchor_coverage" | "semantic_review_required" | "semantic_review_rejected";
+    "source_mismatch" | "ambiguous_quote" | "missing_anchor_coverage" | "semantic_review_required" | "semantic_review_rejected";
 type PendingClaim = { id: string | null; reason: PendingReason };
 
 export function review(batch: string, revision: string, readSource: Source, reviewer?: string) {
@@ -129,6 +129,7 @@ function verifyClaim(claim: RecordLine, evidence: RecordLine[], graph: Graph, re
         const text = content.includes("\n") ? content : content.trim();
         const committed = source(path);
         if (committed === undefined || !text.trim() || !matchesSource(committed, text)) return "source_mismatch";
+        if (!text.includes("\n") && committed.split("\n").filter(line => line.trim() === text).length > 1) return "ambiguous_quote";
         excerpts.push({ path, text });
         checked.push({ link, observation, source: committed });
     }
@@ -163,8 +164,8 @@ function withBlockDigest(observation: RecordLine, path: string, text: string, so
     const context = observation.context as Record<string, unknown>;
     const digests = blockDigests(source, text, /\.(?:md|markdown)$/.test(path));
     if (context.block_sha256 !== undefined) return digests.includes(String(context.block_sha256)) ? observation : undefined;
-    if (digests.length !== 1) return observation;
-    return { ...observation, context: { ...context, block_sha256: digests[0] } };
+    const [blockSha256] = digests;
+    return { ...observation, context: { ...context, block_sha256: blockSha256 } };
 }
 
 function blockDigests(source: string, quoted: string, markdown: boolean): string[] {

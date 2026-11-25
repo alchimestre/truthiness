@@ -117,6 +117,7 @@ const pendingActions = {
     invalid_evidence: "Fix the evidence metadata to match the claim and its anchors",
     stale_evidence: "Refresh the evidence at the current source revision",
     source_mismatch: "Refresh the excerpt from committed source",
+    ambiguous_quote: "Quote a line unique in its file, or quote several consecutive lines",
     missing_anchor_coverage: "Attach supporting evidence for every anchor",
     semantic_review_required: "Request semantic or operator review",
     semantic_review_rejected: "Revise the claim or its evidence; the semantic reviewer did not approve it",

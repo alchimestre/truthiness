@@ -238,6 +238,25 @@ test("a rewritten body hides a behavioral note whose quoted line survives, not a
     }, `${opener}\n    return value;\n}\n`);
 });
 
+test("a one-line quote must be unique in its file; a multi-line excerpt may repeat a line", () => {
+    const source = "function a() {\n    return 1;\n}\nfunction b() {\n    return 1;\n}\n";
+    fixture((cwd, revision) => {
+        const path = join(cwd, "pending.jsonl");
+        writeFileSync(path,
+            batch(revision, "dup", "parser.js: return 1;", "    return 1;") +
+            batch(revision, "unique", "parser.js: function a() {", "function a() {") +
+            batch(revision, "block", "The parser returns one.", "function a() {\n    return 1;\n}"));
+        expect(reviewPending(cwd, path)).toEqual({
+            published: 1,
+            pending: 2,
+            pendingReasons: [
+                { id: "dup", reason: "ambiguous_quote" },
+                { id: "block", reason: "semantic_review_required" },
+            ],
+        });
+    }, source);
+});
+
 function commitParser(cwd: string, source: string) {
     writeFileSync(join(cwd, "parser.js"), source);
     git(cwd, "commit", "-qam", "Edit parser");

@@ -125,6 +125,7 @@ Replace `REVISION` in this example with that hash:
 ```
 
 Submit drafts with `truthiness_draft` in OMP or `src/hook.ts draft < notes.jsonl` in Claude Code and Codex. Remove secrets before submitting; the built-in scan is incomplete.
+One-line quotes must be unique in their file; a duplicated line stays pending as `ambiguous_quote`.
 
 | Draft | Result |
 | --- | --- |
