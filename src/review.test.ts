@@ -132,6 +132,17 @@ test("a reviewer verdict after prose counts only when it is alone on the last li
     });
 });
 
+test("a claim about a source file larger than 16 KiB reaches the reviewer", () => {
+    const largeSource = `${excerpt}\n${"// padding\n".repeat(3000)}`;
+    fixture((cwd, revision) => {
+        const path = join(cwd, "pending.jsonl");
+        const reviewer = join(cwd, "reviewer");
+        writeFileSync(path, batch(revision, "large", "`parse` returns its argument."));
+        writeFileSync(reviewer, "#!/bin/sh\necho '[\"large\"]'\n", { mode: 0o700 });
+        expect(reviewPending(cwd, path, reviewer)).toEqual({ published: 1, pending: 0, pendingReasons: [] });
+    }, largeSource);
+});
+
 test("semantic review sees committed delimiters omitted from a proposed excerpt", () => {
     fixture((cwd, revision) => {
         const path = join(cwd, "pending.jsonl");
@@ -166,7 +177,7 @@ const { candidates } = await Bun.stdin.json();
 console.log(JSON.stringify(candidates.map(candidate => candidate.id)));
 `, { mode: 0o700 });
         expect(reviewPending(cwd, path, reviewer)).toMatchObject({ published: 2, pending: 1 });
-    }, `/*${"\"\\".repeat(4100)}\n${excerpt}\n*/\n`);
+    }, `/*${"\"\\".repeat(17_000)}\n${excerpt}\n*/\n`);
 });
 
 test("semantic review does not send detectable secrets outside the proposed excerpt", () => {

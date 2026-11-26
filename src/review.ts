@@ -194,8 +194,11 @@ function indentation(line: string): number {
     return line.length - line.trimStart().length;
 }
 
+// The largest source files are ~24 KB; claims about a file over this cap can never be reviewed.
+const reviewRequestBytes = 64 * 1024;
+
 function decide(candidates: Candidate[], blobs: Map<string, string | undefined>, reviewer: string): Map<string, boolean> {
-    const limit = 16 * 1024;
+    const limit = reviewRequestBytes;
     const { input, ids } = reviewRequest(candidates, blobs, limit);
     if (!ids.size) return new Map();
     const result = spawnSync(reviewer, [], { input, encoding: "utf8", timeout: 30_000, maxBuffer: limit });
