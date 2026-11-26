@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { parseProposal } from "./store.ts";
 import { digest } from "./review.ts";
 
+export const landmarkAuthor = "bootstrap-source-scanner";
+
 type Note = { path: string; excerpt: string };
 type Blob = { path: string; oid: string; size: number };
 type Leads = Map<string, Set<string>>;
@@ -167,7 +169,7 @@ export function bootstrap(directory: string, revision: string, existing: Set<str
 }
 
 function provenance(note: Note, revision: string) {
-    const recorded = { recorded_at: new Date().toISOString(), recorded_by: "bootstrap-source-scanner" };
+    const recorded = { recorded_at: new Date().toISOString(), recorded_by: landmarkAuthor };
     const claimID = `note-${digest(JSON.stringify([note.path, note.excerpt])).slice(0, 20)}`;
     const evidenceID = `${claimID}-source-${revision.slice(0, 12)}`;
     return [

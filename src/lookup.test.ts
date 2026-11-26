@@ -116,9 +116,12 @@ describe("stale notes", () => {
   test("reports once-valid claims as stale and not never-verified ones", () => {
     const data = stored();
     data.never = { id: "never", kind: "claim", text: "never checked", scope: "service A" };
+    data.landmark = { ...data.claim, id: "landmark", recorded_by: "bootstrap-source-scanner" };
+    data.landmarkEvidence = { ...data.evidence, id: "landmarkEvidence", to: "landmark" };
     const output = index(data, "service A", "def", (value) => value.length);
     expect(output).toContain('Stale notes hidden (1): "claim"');
     expect(output).not.toContain('"never"');
+    expect(output).not.toContain('"landmark"');
     expect(index(data, "service A", "abc", (value) => value.length)).not.toContain("Stale notes");
   });
 

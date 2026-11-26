@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { landmarkAuthor } from "./bootstrap.ts";
 
 export type RecordData = Record<string, unknown>;
 export type Records = Record<string, RecordData>;
@@ -317,9 +318,11 @@ export function staleClaims(records: Records, scope: string, revision: string): 
     .map(([id]) => id);
 }
 
+// Bootstrap reseeds landmarks from current source, so a stale one has nothing for an agent to refresh.
 function staleCandidate(records: Records, claimID: string, scope: string, revision: string): boolean {
   const claim = records[claimID];
   return text(claim, "kind") === "claim"
+    && text(claim, "recorded_by") !== landmarkAuthor
     && inScope(claim, scope)
     && assess(records, claimID, text(claim, "scope"), revision).status === "recheck_required";
 }
