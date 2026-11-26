@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -110,6 +110,23 @@ test("a background rejection is reported once at the next session start", () => 
     waitUntil(() => readdirSync(pending).some(name => name.endsWith(".outcome.json") && readFileSync(join(pending, name), "utf8").trim().endsWith("}")), "background outcome");
     const input = JSON.stringify({ cwd: repo });
     expect(runHook("session-start", input)).toContain('Truthiness background review rejected "retry-limit"');
+    expect(runHook("session-start", input)).not.toContain("background review");
+});
+
+test("a background review that never finished is reported and cleared; one still running is left alone", () => {
+    const pending = join(repo, ".git", "truthiness", "pending");
+    mkdirSync(pending, { recursive: true });
+    const crashed = join(pending, "crashed.jsonl");
+    writeFileSync(crashed, `${JSON.stringify({ id: "lost-claim", kind: "claim", text: "x" })}\n`);
+    writeFileSync(`${crashed}.outcome.json`, "");
+    const elevenMinutesAgo = new Date(Date.now() - 11 * 60 * 1000);
+    utimesSync(`${crashed}.outcome.json`, elevenMinutesAgo, elevenMinutesAgo);
+    writeFileSync(join(pending, "running.jsonl.outcome.json"), "");
+    const input = JSON.stringify({ cwd: repo });
+    expect(runHook("session-start", input)).toContain('Truthiness background review did not finish for "lost-claim"');
+    expect(existsSync(`${crashed}.outcome.json`)).toBe(false);
+    expect(existsSync(crashed)).toBe(true);
+    expect(existsSync(join(pending, "running.jsonl.outcome.json"))).toBe(true);
     expect(runHook("session-start", input)).not.toContain("background review");
 });
 

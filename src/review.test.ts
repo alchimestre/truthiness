@@ -143,6 +143,22 @@ test("a claim about a source file larger than 16 KiB reaches the reviewer", () =
     }, largeSource);
 });
 
+test("a claim about a source file over the request cap is reviewed from windows around its excerpt", () => {
+    const largeSource = `${"// padding\n".repeat(4000)}${excerpt}\n${"// padding\n".repeat(4000)}`;
+    fixture((cwd, revision) => {
+        const path = join(cwd, "pending.jsonl");
+        const reviewer = join(cwd, "reviewer");
+        writeFileSync(path, batch(revision, "windowed", "`parse` returns its argument."));
+        writeFileSync(reviewer, `#!/usr/bin/env bun
+const input = await Bun.stdin.text();
+const [source] = JSON.parse(input).sources;
+const shown = source.windows?.some(window => window.text.includes("return value"));
+console.log(JSON.stringify(input.length <= 64 * 1024 && shown && !("text" in source) ? ["windowed"] : []));
+`, { mode: 0o700 });
+        expect(reviewPending(cwd, path, reviewer)).toEqual({ published: 1, pending: 0, pendingReasons: [] });
+    }, largeSource);
+});
+
 test("semantic review sees committed delimiters omitted from a proposed excerpt", () => {
     fixture((cwd, revision) => {
         const path = join(cwd, "pending.jsonl");

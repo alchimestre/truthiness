@@ -118,25 +118,32 @@ function reviewInBackground(program: string, cwd: string, store: string, path: s
     closeSync(outcome);
 }
 
-// shortcut: an outcome left empty by a crashed worker is never reported or removed; add an age cutoff if that shows up.
+// Longer than one reviewer call (30 s timeout) plus startup, with wide margin.
+const crashedReviewAgeMs = 10 * 60 * 1000;
+
 export function backgroundReviewNotice(cwd: string, pendingDirectory: string): string | undefined {
     const directory = resolve(cwd, pendingDirectory);
     if (!existsSync(directory)) return undefined;
     const rejected: string[] = [];
     const unresolved: string[] = [];
+    const crashed: string[] = [];
     for (const name of readdirSync(directory).filter(entry => entry.endsWith(outcomeSuffix))) {
         const path = join(directory, name);
         const reasons = finishedOutcome(path);
-        if (!reasons) continue;
-        for (const { id, reason } of reasons) {
-            if (reason === "semantic_review_rejected") rejected.push(JSON.stringify(id));
-            if (reason === "semantic_review_required") unresolved.push(JSON.stringify(id));
-        }
+        if (reasons) {
+            for (const { id, reason } of reasons) {
+                if (reason === "semantic_review_rejected") rejected.push(JSON.stringify(id));
+                if (reason === "semantic_review_required") unresolved.push(JSON.stringify(id));
+            }
+        } else if (Date.now() - statSync(path).mtimeMs > crashedReviewAgeMs) {
+            crashed.push(...stagedClaimIDs(path.slice(0, -outcomeSuffix.length)));
+        } else continue;
         unlinkSync(path);
     }
     const lines = [];
     if (rejected.length) lines.push(`Truthiness background review rejected ${listed(rejected)}. Revise the claim or its evidence and draft it again.`);
     if (unresolved.length) lines.push(`Truthiness background review returned no verdict for ${listed(unresolved)}; they stay pending for operator review.`);
+    if (crashed.length) lines.push(`Truthiness background review did not finish for ${listed(crashed)}; they stay pending for operator review.`);
     return lines.length ? lines.join("\n") : undefined;
 }
 
@@ -147,6 +154,18 @@ function finishedOutcome(path: string): { id: unknown; reason: unknown }[] | und
     } catch {
         return undefined;
     }
+}
+
+function stagedClaimIDs(batchPath: string): string[] {
+    if (!existsSync(batchPath)) return [];
+    return readFileSync(batchPath, "utf8").split("\n").flatMap(line => {
+        try {
+            const record = JSON.parse(line);
+            return record?.kind === "claim" ? [JSON.stringify(record.id)] : [];
+        } catch {
+            return [];
+        }
+    });
 }
 
 function listed(labels: string[]): string {

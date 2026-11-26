@@ -194,7 +194,7 @@ function indentation(line: string): number {
     return line.length - line.trimStart().length;
 }
 
-// The largest source files are ~24 KB; claims about a file over this cap can never be reviewed.
+// The largest source files are ~24 KB; larger files are sent as windows around the evidence.
 const reviewRequestBytes = 64 * 1024;
 
 function decide(candidates: Candidate[], blobs: Map<string, string | undefined>, reviewer: string): Map<string, boolean> {
@@ -228,17 +228,14 @@ function reviewRequest(candidates: Candidate[], blobs: Map<string, string | unde
         "Approve only when the claim, including its scope, qualifiers, and anchor symbols, follows directly from the source in context.",
         "A heading, comment, symbol name or documentation promise is not proof of runtime behavior.",
         "Abstain if evidence is incomplete, ambiguous, or requires running a command.",
+        "A source with windows instead of text is a file too large to send whole: each window starts at firstLine and shows only the lines around the evidence. Abstain if the claim depends on code outside the windows.",
         "End the reply with a JSON array of approved claim IDs as double-quoted strings, alone on its final line, for example [\"claim-id\"]; use [] if none qualify.",
     ].join(" ");
     const prefix = `{"rubric":${JSON.stringify(rubric)},"candidates":[`;
     const separator = '],"sources":[';
     const suffix = "]}";
     let remaining = limit - Buffer.byteLength(prefix + separator + suffix);
-    const available = new Map<string, string>();
-    for (const [path, text] of blobs) {
-        if (text === undefined || Buffer.byteLength(text) > remaining || text.includes("\0") || containsDetectableSecret(text)) continue;
-        available.set(path, JSON.stringify({ path, text }));
-    }
+    const available = availableSources(candidates, blobs, remaining);
     const selected: string[] = [];
     const sources = new Map<string, string>();
     const ids = new Set<string>();
@@ -258,6 +255,45 @@ function reviewRequest(candidates: Candidate[], blobs: Map<string, string | unde
     }
     const input = prefix + selected.join(",") + separator + [...sources.values()].join(",") + suffix;
     return { input, ids };
+}
+
+const windowContextLines = 60;
+
+function availableSources(candidates: Candidate[], blobs: Map<string, string | undefined>, budget: number): Map<string, string> {
+    const available = new Map<string, string>();
+    for (const [path, text] of blobs) {
+        if (text === undefined || text.includes("\0") || containsDetectableSecret(text)) continue;
+        const whole = JSON.stringify({ path, text });
+        const excerpts = candidates.flatMap(candidate => candidate.excerpts).filter(excerpt => excerpt.path === path);
+        const source = Buffer.byteLength(whole) <= budget ? whole : windowedSource(path, text, excerpts);
+        if (source && Buffer.byteLength(source) <= budget) available.set(path, source);
+    }
+    return available;
+}
+
+function windowedSource(path: string, text: string, excerpts: Excerpt[]): string | undefined {
+    const lines = text.split("\n");
+    const ranges: [number, number][] = [];
+    for (const excerpt of excerpts) {
+        const offset = text.indexOf(excerpt.text);
+        if (offset < 0) return undefined;
+        const first = text.slice(0, offset).split("\n").length - 1;
+        const last = first + excerpt.text.split("\n").length - 1;
+        ranges.push([Math.max(0, first - windowContextLines), Math.min(lines.length - 1, last + windowContextLines)]);
+    }
+    if (!ranges.length) return undefined;
+    const windows = mergeRanges(ranges).map(([start, end]) => ({ firstLine: start + 1, text: lines.slice(start, end + 1).join("\n") }));
+    return JSON.stringify({ path, totalLines: lines.length, windows });
+}
+
+function mergeRanges(ranges: [number, number][]): [number, number][] {
+    const merged: [number, number][] = [];
+    for (const [start, end] of ranges.sort((left, right) => left[0] - right[0])) {
+        const previous = merged.at(-1);
+        if (previous && start <= previous[1] + 1) previous[1] = Math.max(previous[1], end);
+        else merged.push([start, end]);
+    }
+    return merged;
 }
 
 export function digest(batch: string): string {
