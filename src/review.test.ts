@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readBlobsAt } from "./bootstrap.ts";
 
 const cli = fileURLToPath(new URL("./cli.ts", import.meta.url));
 const excerpt = "export function parse(value) { return value; }";
@@ -191,6 +192,19 @@ test("bootstrap uses ignored notes as leads, not as evidence", () => {
         expect(second.exitCode).toBe(0);
         expect(readFileSync(join(cwd, "canonical.jsonl"), "utf8")).toBe(seeded);
         expect(readFileSync(join(cwd, "canonical.rechecks.jsonl"), "utf8")).toContain("Source excerpt still present");
+    });
+});
+
+test("batched source reads return each committed file and skip missing paths and directories", () => {
+    fixture((cwd, revision) => {
+        mkdirSync(join(cwd, "lib"));
+        writeFileSync(join(cwd, "lib", "empty.js"), "");
+        git(cwd, "add", ".");
+        git(cwd, "commit", "-qm", "Add lib");
+        const head = git(cwd, "rev-parse", "HEAD");
+        const sources = readBlobsAt(cwd, head, ["missing.js", "parser.js", "lib", "lib/empty.js", "../parser.js"]);
+        expect([...sources]).toEqual([["parser.js", `${excerpt}\n`], ["lib/empty.js", ""]]);
+        expect(readBlobsAt(cwd, revision, ["lib/empty.js"]).size).toBe(0);
     });
 });
 

@@ -14,6 +14,9 @@ const heading = /^#{1,4}\s+\S/;
 const maxNotes = 300;
 const minExcerpt = 8;
 const maxExcerpt = 160;
+const gitTimeout = 5000;
+const maxBlobBytes = 1024 * 1024;
+const newline = 10;
 
 function sourceFiles(directory: string, revision: string) {
     const tree = checkout(directory, ["ls-tree", "-rlz", "--full-tree", revision]);
@@ -190,5 +193,29 @@ export function checkout(directory: string, args: string[]): string | undefined 
 export function readBlob(directory: string, revision: string, path: string): string | undefined {
     if (path.split("/").some(part => !part || part === "." || part === "..")) return;
     return checkout(directory, ["cat-file", "blob", `${revision}:${path}`]);
+}
+
+// One `cat-file --batch` instead of a git process per file: spawning hundreds of them takes seconds at startup.
+export function readBlobsAt(directory: string, revision: string, paths: string[]): Map<string, string | undefined> {
+    const sources = new Map<string, string | undefined>();
+    const safe = paths.filter(path => !path.includes("\n") && !path.split("/").some(part => !part || part === "." || part === ".."));
+    if (!safe.length) return sources;
+    const result = spawnSync("git", ["--no-replace-objects", "-C", directory, "cat-file", "--batch"], {
+        input: safe.map(path => `${revision}:${path}\n`).join(""), timeout: gitTimeout, maxBuffer: safe.length * maxBlobBytes,
+    });
+    if (result.status !== 0) return sources;
+    const output = result.stdout;
+    let offset = 0;
+    for (const path of safe) {
+        const end = output.indexOf(newline, offset);
+        const header = output.toString("utf8", offset, end);
+        offset = end + 1;
+        if (header.endsWith(" missing") || header.endsWith(" ambiguous")) continue;
+        const [, type, size] = header.split(" ");
+        const start = offset;
+        offset = start + Number(size) + 1;
+        if (type === "blob" && Number(size) <= maxBlobBytes) sources.set(path, output.toString("utf8", start, offset - 1));
+    }
+    return sources;
 }
 

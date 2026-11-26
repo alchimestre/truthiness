@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { sourceRevision } from "./agent.ts";
-import { bootstrap, checkedAt, readBlob } from "./bootstrap.ts";
+import { bootstrap, checkedAt, readBlob, readBlobsAt } from "./bootstrap.ts";
 import { load, parseProposal, publish, publishAuthorized, publishRechecks, stage, type Graph } from "./store.ts";
 import { anchoredPaths, index, query, staleDraft } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
@@ -92,9 +92,16 @@ async function seedLandmarks(store: string, directory: string, revision: string,
 async function recheckStore(store: string, directory: string, revision: string) {
     const batch = recheckBatch(await loadIfPresent(store), revision);
     if (!batch) return;
-    const result = review(batch, revision, path => readBlob(directory, revision, path), process.env.TRUTHINESS_REVIEWER);
+    const sources = readBlobsAt(directory, revision, observedPaths(batch));
+    const result = review(batch, revision, path => sources.get(path), process.env.TRUTHINESS_REVIEWER);
     await publishNew(store, result.approved, payload => publishRechecks(store, payload));
     if (result.published) console.log(`Rechecked ${result.published} claims; ${result.pending} need a fresh check.`);
+}
+
+function observedPaths(batch: string): string[] {
+    const records = batch.split("\n").filter(Boolean).map(line => JSON.parse(line));
+    const refs = records.filter(record => record.kind === "observation").map(record => String(record.source_ref));
+    return [...new Set(refs.map(ref => ref.slice(ref.indexOf(":") + 1)))];
 }
 
 async function reviewPending(store: string, pending: string, directory: string) {
