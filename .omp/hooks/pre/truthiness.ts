@@ -99,9 +99,15 @@ function registerDraftTool(hook: Hook) {
 
 async function agentStart(hook: Hook, event: AgentStart, ctx: Session) {
     const index = await startupIndex(hook, ctx);
-    const systemPrompt = recallPrompt(hook, event, ctx.cwd);
-    if (!systemPrompt) return index;
-    return { ...index, systemPrompt };
+    const recalled = recallPrompt(hook, event, ctx.cwd);
+    const notice = reviewNotice(hook, ctx.cwd);
+    if (!recalled && !notice) return index;
+    return { ...index, systemPrompt: [...(recalled ?? event.systemPrompt), ...(notice ? [notice] : [])] };
+}
+
+function reviewNotice(hook: Hook, cwd: string) {
+    const { pending } = memoryPaths(cwd);
+    return hook.enabled && pending ? backgroundReviewNotice(cwd, pending) : undefined;
 }
 
 function recallPrompt(hook: Hook, event: AgentStart, cwd: string): string[] | undefined {
@@ -115,7 +121,7 @@ function recallPrompt(hook: Hook, event: AgentStart, cwd: string): string[] | un
 
 async function startupIndex(hook: Hook, ctx: Session) {
     if (!hook.enabled) return;
-    const { store, pending } = memoryPaths(ctx.cwd);
+    const { store } = memoryPaths(ctx.cwd);
     const head = cleanSourceRevision(ctx.cwd);
     if (!store || !head) return;
     // Only an explicit hasUI=false (print/RPC mode) is headless; a missing flag is not.
@@ -134,8 +140,7 @@ async function startupIndex(hook: Hook, ctx: Session) {
     }
     const after = snapshot(ctx.cwd, store);
     if (after?.head !== current.head || after.digest !== current.digest) return;
-    const notice = pending && backgroundReviewNotice(ctx.cwd, pending);
-    return { message: { customType: messageType, content: notice ? `${index}${notice}\n` : index, display: false, details: key } };
+    return { message: { customType: messageType, content: index, display: false, details: key } };
 }
 
 function currentIndexOnly<T extends Message>(hook: Hook, messages: T[], cwd: string): T[] {
