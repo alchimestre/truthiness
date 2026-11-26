@@ -228,7 +228,7 @@ function reviewRequest(candidates: Candidate[], blobs: Map<string, string | unde
         "Approve only when the claim, including its scope, qualifiers, and anchor symbols, follows directly from the source in context.",
         "A heading, comment, symbol name or documentation promise is not proof of runtime behavior.",
         "Abstain if evidence is incomplete, ambiguous, or requires running a command.",
-        "End the reply with a JSON array of approved claim IDs alone on its final line; use [] if none qualify.",
+        "End the reply with a JSON array of approved claim IDs as double-quoted strings, alone on its final line, for example [\"claim-id\"]; use [] if none qualify.",
     ].join(" ");
     const prefix = `{"rubric":${JSON.stringify(rubric)},"candidates":[`;
     const separator = '],"sources":[';
