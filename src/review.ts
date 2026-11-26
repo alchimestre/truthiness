@@ -212,12 +212,14 @@ function decide(candidates: Candidate[], blobs: Map<string, string | undefined>,
     }
 }
 
-// Models often reason before answering; accept that only when the last line is the whole verdict array.
+// Models often reason before answering, pretty-print the array, or typeset its quotes; accept only a trailing array block.
 function parseVerdict(reply: string): unknown {
     try {
         return JSON.parse(reply);
     } catch {
-        return JSON.parse(reply.trimEnd().split("\n").at(-1) ?? "");
+        const lines = reply.trimEnd().split("\n");
+        const opening = lines.findLastIndex(line => line.trimStart().startsWith("["));
+        return JSON.parse(lines.slice(opening).join("\n").replace(/[\u201C\u201D]/g, '"'));
     }
 }
 

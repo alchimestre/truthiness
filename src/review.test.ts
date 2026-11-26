@@ -116,7 +116,7 @@ console.log(JSON.stringify(candidates.map(candidate => candidate.id)));
     });
 });
 
-test("a reviewer verdict after prose counts only when it is alone on the last line", () => {
+test("a reviewer verdict after prose counts only as a trailing array block", () => {
     fixture((cwd, revision) => {
         const path = join(cwd, "pending.jsonl");
         const reviewer = join(cwd, "reviewer");
@@ -129,6 +129,12 @@ test("a reviewer verdict after prose counts only when it is alone on the last li
         writeFileSync(path, batch(revision, "inline", "`parse` returns its argument."));
         writeFileSync(reviewer, "#!/bin/sh\nprintf '%s\\n' 'Approved: [\"inline\"]'\n", { mode: 0o700 });
         expect(reviewPending(cwd, path, reviewer)).toMatchObject({ published: 0, pendingReasons: [{ id: "inline", reason: "semantic_review_required" }] });
+        writeFileSync(path, batch(revision, "pretty", "`parse` returns its argument."));
+        writeFileSync(reviewer, "#!/bin/sh\nprintf '%s\\n' 'Holds.' '[' '  \"pretty\"' ']'\n", { mode: 0o700 });
+        expect(reviewPending(cwd, path, reviewer)).toEqual({ published: 1, pending: 0, pendingReasons: [] });
+        writeFileSync(path, batch(revision, "typeset", "`parse` returns its argument."));
+        writeFileSync(reviewer, "#!/bin/sh\nprintf '%s\\n' 'Holds.' '[\u201Ctypeset\u201D]'\n", { mode: 0o700 });
+        expect(reviewPending(cwd, path, reviewer)).toEqual({ published: 1, pending: 0, pendingReasons: [] });
     });
 });
 
