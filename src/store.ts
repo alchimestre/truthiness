@@ -38,6 +38,26 @@ export async function stage(path: string, payload: string): Promise<void> {
     });
 }
 
+/** Removes one pending claim under the stage lock so a draft staged meanwhile is kept; returns the removed records as JSONL. */
+export async function unstage(path: string, claimID: string): Promise<string> {
+    let removed = "";
+    await withLock(path, async () => {
+        const current = await readRecordsIfExists(path);
+        const shared = new Set(Object.values(current).filter(record => record.kind === "evidence_for" && record.to !== claimID).map(record => String(record.from)));
+        const taken = new Set(claimRecordIDs(current, claimID).filter(id => !shared.has(id)));
+        const kept = Object.fromEntries(Object.entries(current).filter(([id]) => !taken.has(id)));
+        removed = [...taken].map(id => `${JSON.stringify(current[id])}\n`).join("");
+        await atomicWrite(path, encodeGraph(kept));
+    });
+    return removed;
+}
+
+export function claimRecordIDs(graph: Graph, claimID: string): string[] {
+    if (graph[claimID]?.kind !== "claim") throw new Error(`no pending claim ${claimID}`);
+    const links = Object.values(graph).filter(record => record.kind === "evidence_for" && record.to === claimID);
+    return [...new Set([claimID, ...links.map(link => link.id), ...links.map(link => String(link.from))])];
+}
+
 export function parseProposal(payload: string): Graph {
     return decodeRecords(Buffer.from(payload, "utf8"));
 }

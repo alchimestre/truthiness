@@ -1,18 +1,18 @@
 #!/usr/bin/env bun
-import { readFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { sourceRevision } from "./agent.ts";
 import { bootstrap, checkedAt, readBlob, readBlobsAt } from "./bootstrap.ts";
-import { load, parseProposal, publish, publishAuthorized, publishRechecks, stage, type Graph } from "./store.ts";
+import { claimRecordIDs, load, parseProposal, publish, publishAuthorized, publishRechecks, stage, unstage, type Graph } from "./store.ts";
 import { anchoredPaths, index, query, staleDraft } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
-import { digest, recheckBatch, review } from "./review.ts";
+import { digest, recheckBatch, review, type PendingReason } from "./review.ts";
 
 const maxProposalBytes = 16 * 1024 * 1024;
 
 async function run(args: string[]) {
     const [command, path, ...options] = args;
-    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE TOKENIZER | index STORE SCOPE REVISION TOKENIZER | stale STORE SCOPE REVISION | anchors STORE | stage PENDING | bootstrap STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE");
+    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE TOKENIZER | index STORE SCOPE REVISION TOKENIZER | stale STORE SCOPE REVISION | anchors STORE | stage PENDING | bootstrap STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE | pending STORE PENDING_FILE | pending-approve STORE PENDING_FILE CLAIM_ID | pending-decline STORE PENDING_FILE CLAIM_ID");
     switch (command) {
         case "validate":
             requireOptions(options, 0);
@@ -62,6 +62,18 @@ async function run(args: string[]) {
         case "publish-authorized":
             requireOptions(options, 1);
             await publishAuthorized(path, await readInput(), await Bun.file(options[0]).json());
+            return;
+        case "pending":
+            requireOptions(options, 1);
+            await showNextPending(options[0], process.cwd());
+            return;
+        case "pending-approve":
+            requireOptions(options, 2);
+            await approvePending(path, options[0], options[1], process.cwd());
+            return;
+        case "pending-decline":
+            requireOptions(options, 2);
+            await declinePending(options[0], options[1]);
             return;
         default:
             throw new Error(`unknown command: ${command}`);
@@ -165,6 +177,59 @@ function countTokens(program: string, input: string) {
     if (result.exitCode !== 0 || !/^\d+$/.test(text)) return -1;
     const count = Number(text);
     return Number.isSafeInteger(count) ? count : -1;
+}
+
+type GraphRecord = Graph[string];
+type PendingItem = { reason: PendingReason; claim: GraphRecord; observations: GraphRecord[] };
+
+async function showNextPending(pending: string, directory: string) {
+    const batch = await readPending(pending);
+    const revision = head(directory);
+    const result = review(batch, revision, path => readBlob(directory, revision, path), process.env.TRUTHINESS_REVIEWER);
+    const queue = rankPending(parseProposal(batch), result.pendingReasons);
+    const [next] = queue;
+    if (!next) return;
+    console.log(`${next.claim.id} (${next.reason})`);
+    console.log(String(next.claim.text));
+    for (const observation of next.observations) console.log(`  ${sourcePath(observation)}: ${String(observation.content)}`);
+    if (queue.length > 1) console.log(`${queue.length - 1} more pending`);
+}
+
+async function approvePending(store: string, pending: string, claimID: string, directory: string) {
+    const text = await readPending(pending);
+    const graph = parseProposal(text);
+    const batch = claimRecordIDs(graph, claimID).map(id => `${JSON.stringify(graph[id])}\n`).join("");
+    const revision = head(directory);
+    const result = review(batch, revision, path => readBlob(directory, revision, path), undefined, new Set([claimID]));
+    if (result.pending) throw new Error(`claim ${claimID} not published: ${result.pendingReasons[0].reason}`);
+    if (head(directory) !== revision) throw new Error("Source revision changed during review; batch remains pending");
+    const published = await publishNew(store, result.approved);
+    await unstage(pending, claimID);
+    console.log(JSON.stringify({ published }));
+}
+
+async function declinePending(pending: string, claimID: string) {
+    await appendFile(`${pending}.declined`, await unstage(pending, claimID));
+}
+
+function rankPending(graph: Graph, pendingReasons: { id: string | null; reason: PendingReason }[]): PendingItem[] {
+    const items = pendingReasons.flatMap(({ id, reason }): PendingItem[] => {
+        if (id === null) return [];
+        const links = Object.values(graph).filter(record => record.kind === "evidence_for" && record.to === id);
+        const observations = links.map(link => graph[String(link.from)]);
+        return [{ reason, claim: graph[id], observations }];
+    });
+    return items.sort((first, second) => second.observations.length - first.observations.length || Date.parse(String(second.claim.recorded_at)) - Date.parse(String(first.claim.recorded_at)));
+}
+
+function sourcePath(observation: GraphRecord) {
+    const reference = String(observation.source_ref);
+    return reference.slice(reference.indexOf(":") + 1);
+}
+
+async function readPending(pending: string) {
+    if (Bun.file(pending).size > maxProposalBytes) throw new Error("input exceeds 16 MiB");
+    return decodeInput(await readFile(pending));
 }
 
 try {

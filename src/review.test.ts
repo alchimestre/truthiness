@@ -291,3 +291,43 @@ function reviewPending(cwd: string, path: string, reviewer = "") {
     expect(result.exitCode).toBe(0);
     return JSON.parse(result.stdout.toString());
 }
+
+test("pending approval publishes a semantic claim once its quote matches source", () => {
+    fixture((cwd, revision) => {
+        writeFileSync(join(cwd, "pending.jsonl"), batch(revision, "parse", "Parser returns its input unchanged"));
+        const approve = Bun.spawnSync(["bun", cli, "pending-approve", "canonical.jsonl", "pending.jsonl", "parse"], { cwd });
+        expect(approve.stderr.toString()).toBe("");
+        expect(approve.exitCode).toBe(0);
+        expect(readFileSync(join(cwd, "canonical.jsonl"), "utf8")).toContain('"id":"parse"');
+    });
+});
+
+test("human pending approval does not publish a claim whose quote no longer matches source", () => {
+    fixture((cwd, revision) => {
+        writeFileSync(join(cwd, "pending.jsonl"), batch(revision, "parse", "Parser returns its input unchanged", "export function gone() {}"));
+        const approve = Bun.spawnSync(["bun", cli, "pending-approve", "canonical.jsonl", "pending.jsonl", "parse"], { cwd });
+        expect(approve.exitCode).toBe(1);
+        expect(() => readFileSync(join(cwd, "canonical.jsonl"), "utf8")).toThrow();
+    });
+});
+
+test("pending decline removes one claim's records from the pending file", () => {
+    fixture((cwd, revision) => {
+        writeFileSync(join(cwd, "pending.jsonl"), batch(revision, "parse", "Parser returns its input unchanged") + batch(revision, "keep", "Parser keeps its input"));
+        const decline = Bun.spawnSync(["bun", cli, "pending-decline", "canonical.jsonl", "pending.jsonl", "parse"], { cwd });
+        expect(decline.exitCode).toBe(0);
+        const remaining = readFileSync(join(cwd, "pending.jsonl"), "utf8");
+        expect(remaining).toContain('"id":"keep"');
+        expect(remaining).not.toContain('"id":"parse"');
+    });
+});
+
+test("pending shows one claim at a time with a count of the rest", () => {
+    fixture((cwd, revision) => {
+        writeFileSync(join(cwd, "pending.jsonl"), batch(revision, "parse", "Parser returns its input unchanged") + batch(revision, "keep", "Parser keeps its input"));
+        const shown = Bun.spawnSync(["bun", cli, "pending", "canonical.jsonl", "pending.jsonl"], { cwd });
+        expect(shown.exitCode).toBe(0);
+        expect(shown.stdout.toString()).toContain("semantic_review_required");
+        expect(shown.stdout.toString()).toContain("1 more pending");
+    });
+});

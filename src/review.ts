@@ -12,7 +12,7 @@ export type PendingReason = "invalid_batch" | "missing_evidence" | "invalid_evid
     "source_mismatch" | "ambiguous_quote" | "missing_anchor_coverage" | "semantic_review_required" | "semantic_review_rejected";
 type PendingClaim = { id: string | null; reason: PendingReason };
 
-export function review(batch: string, revision: string, readSource: Source, reviewer?: string) {
+export function review(batch: string, revision: string, readSource: Source, reviewer?: string, humanApprovedIDs: ReadonlySet<string> = new Set()) {
     const graph = parseProposal(batch);
     const records = Object.values(graph);
     const claims = records.filter(record => record.kind === "claim");
@@ -40,7 +40,7 @@ export function review(batch: string, revision: string, readSource: Source, revi
     let published = 0;
     for (const group of groups) {
         const verdict = verdicts.get(group.candidate.id);
-        if (!group.exact && !verdict) {
+        if (!group.exact && !verdict && !humanApprovedIDs.has(group.candidate.id)) {
             const reason = verdict === false ? "semantic_review_rejected" : "semantic_review_required";
             pendingReasons.push({ id: group.candidate.id, reason });
             continue;

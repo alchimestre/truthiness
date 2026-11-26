@@ -164,6 +164,8 @@ export TRUTHINESS_REVIEW_COMMAND=llm
 | `truthiness validate STORE` | Check the store for errors. |
 | `truthiness axioms STORE SCOPE` | List standing rules for a scope. |
 | `truthiness publish-authorized STORE APPROVAL_FILE` | Publish standing rules from stdin with an approval file. |
+| `truthiness pending STORE PENDING_FILE` | Show the strongest pending claim with its reason and quotes, plus the count of the rest. |
+| `truthiness pending-approve STORE PENDING_FILE CLAIM_ID` | Publish one pending claim whose quotes still match source. `pending-decline STORE PENDING_FILE CLAIM_ID` moves it to `PENDING_FILE.declined`. |
 
 Look up one note:
 
