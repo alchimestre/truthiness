@@ -116,13 +116,19 @@ console.log(JSON.stringify(candidates.map(candidate => candidate.id)));
     });
 });
 
-test("a reviewer verdict after prose still counts", () => {
+test("a reviewer verdict after prose counts only when it is alone on the last line", () => {
     fixture((cwd, revision) => {
         const path = join(cwd, "pending.jsonl");
         const reviewer = join(cwd, "reviewer");
         writeFileSync(path, batch(revision, "supported", "`parse` returns its argument."));
         writeFileSync(reviewer, "#!/bin/sh\nprintf '%s\\n' 'The claim [holds] for parse.' '' '[\"supported\"]'\n", { mode: 0o700 });
         expect(reviewPending(cwd, path, reviewer)).toEqual({ published: 1, pending: 0, pendingReasons: [] });
+        writeFileSync(path, batch(revision, "trailing", "`parse` returns its argument."));
+        writeFileSync(reviewer, "#!/bin/sh\nprintf '%s\\n' '[\"trailing\"]' 'On reflection, abstain.'\n", { mode: 0o700 });
+        expect(reviewPending(cwd, path, reviewer)).toMatchObject({ published: 0, pendingReasons: [{ id: "trailing", reason: "semantic_review_required" }] });
+        writeFileSync(path, batch(revision, "inline", "`parse` returns its argument."));
+        writeFileSync(reviewer, "#!/bin/sh\nprintf '%s\\n' 'Approved: [\"inline\"]'\n", { mode: 0o700 });
+        expect(reviewPending(cwd, path, reviewer)).toMatchObject({ published: 0, pendingReasons: [{ id: "inline", reason: "semantic_review_required" }] });
     });
 });
 

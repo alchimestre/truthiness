@@ -201,7 +201,7 @@ function decide(candidates: Candidate[], blobs: Map<string, string | undefined>,
     const result = spawnSync(reviewer, [], { input, encoding: "utf8", timeout: 30_000, maxBuffer: limit });
     if (result.status !== 0) return new Map();
     try {
-        const approved: unknown = JSON.parse(finalArray(result.stdout));
+        const approved = parseVerdict(result.stdout);
         if (!Array.isArray(approved) || !approved.every(id => typeof id === "string" && ids.has(id))) return new Map();
         return new Map([...ids].map(id => [id, approved.includes(id)]));
     } catch {
@@ -209,9 +209,13 @@ function decide(candidates: Candidate[], blobs: Map<string, string | undefined>,
     }
 }
 
-// Models often reason before answering; only the reply's final JSON array is the verdict.
-function finalArray(reply: string): string {
-    return /\[[^[\]]*\]\s*$/.exec(reply)?.[0] ?? reply;
+// Models often reason before answering; accept that only when the last line is the whole verdict array.
+function parseVerdict(reply: string): unknown {
+    try {
+        return JSON.parse(reply);
+    } catch {
+        return JSON.parse(reply.trimEnd().split("\n").at(-1) ?? "");
+    }
 }
 
 function reviewRequest(candidates: Candidate[], blobs: Map<string, string | undefined>, limit: number) {
@@ -221,7 +225,7 @@ function reviewRequest(candidates: Candidate[], blobs: Map<string, string | unde
         "Approve only when the claim, including its scope, qualifiers, and anchor symbols, follows directly from the source in context.",
         "A heading, comment, symbol name or documentation promise is not proof of runtime behavior.",
         "Abstain if evidence is incomplete, ambiguous, or requires running a command.",
-        "Return only a JSON array of approved claim IDs; return [] if none qualify.",
+        "End the reply with a JSON array of approved claim IDs alone on its final line; use [] if none qualify.",
     ].join(" ");
     const prefix = `{"rubric":${JSON.stringify(rubric)},"candidates":[`;
     const separator = '],"sources":[';
