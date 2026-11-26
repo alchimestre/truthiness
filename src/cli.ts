@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { appendFile, readFile } from "node:fs/promises";
+import { appendFile, readFile, unlink } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { sourceRevision } from "./agent.ts";
 import { bootstrap, checkedAt, readBlob, readBlobsAt } from "./bootstrap.ts";
@@ -124,6 +124,7 @@ async function reviewPending(store: string, pending: string, directory: string) 
     const result = review(batch, revision, path => readBlob(directory, revision, path), process.env.TRUTHINESS_REVIEWER);
     if (result.approved && head(directory) !== revision) throw new Error("Source revision changed during review; batch remains pending");
     const published = await publishNew(store, result.approved);
+    if (result.pending === 0) await unlink(pending).catch(() => console.error("Truthiness finished review but could not remove the staged copy."));
     console.log(JSON.stringify({ published, pending: result.pending, pendingReasons: result.pendingReasons }));
 }
 

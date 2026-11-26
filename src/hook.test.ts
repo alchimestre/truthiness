@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,12 +89,26 @@ test("a prompt gets matching behavioral claims as context, not bare quotes; an u
     const reviewer = join(root, "reviewer");
     writeFileSync(reviewer, "#!/usr/bin/env bun\nconst { candidates } = await Bun.stdin.json();\nconsole.log(JSON.stringify(candidates.map(candidate => candidate.id)));\n", { mode: 0o700 });
     runHook("draft", quoteNote("retry-line", "limits.ts", line));
-    runHook("draft", quoteNote("retry-limit", "limits.ts", line, "RETRY_LIMIT allows three retries."), { TRUTHINESS_REVIEWER: reviewer });
+    const drafted = runHook("draft", quoteNote("retry-limit", "limits.ts", line, "RETRY_LIMIT allows three retries."), { TRUTHINESS_REVIEWER: reviewer });
+    expect(drafted).toContain("Under semantic review in the background");
+    waitForStore(`"id":"retry-limit"`);
     const context = JSON.parse(runHook("prompt-submit", JSON.stringify({ cwd: repo, prompt: "How many retries does RETRY_LIMIT allow?" }))).hookSpecificOutput.additionalContext;
     expect(context).toContain("RETRY_LIMIT allows three retries.");
     expect(context).not.toContain(`limits.ts: ${line}`);
     expect(runHook("prompt-submit", JSON.stringify({ cwd: repo, prompt: "Rename the logging helper" }))).toBe("");
 });
+
+const backgroundReviewWaitMs = 15_000;
+const pollMs = 100;
+
+function waitForStore(text: string) {
+    const store = join(repo, ".truthiness", "canonical.jsonl");
+    const deadline = Date.now() + backgroundReviewWaitMs;
+    while (!(existsSync(store) && readFileSync(store, "utf8").includes(text))) {
+        if (Date.now() > deadline) throw new Error(`store never gained ${text}`);
+        Bun.sleepSync(pollMs);
+    }
+}
 
 test("a headless session start skips bootstrap unless TRUTHINESS_BOOTSTRAP=on", () => {
     const input = JSON.stringify({ cwd: repo });

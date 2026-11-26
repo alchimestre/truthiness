@@ -1,7 +1,6 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
-import { unlink } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -93,15 +92,15 @@ export async function stageAndReview(program: string, cwd: string, store: string
     }
     try {
         const maxBuffer = Buffer.byteLength(draft) + 1024 * 1024;
-        const { stdout } = await runWorker(program, ["review-pending", store, path], { cwd, timeout: 40_000, maxBuffer });
+        const codeOnly = { ...process.env, TRUTHINESS_REVIEWER: "" };
+        const { stdout } = await runWorker(program, ["review-pending", store, path], { cwd, timeout: 40_000, maxBuffer, env: codeOnly });
         const result = JSON.parse(stdout) as { published: number; pending: number; pendingReasons: unknown };
         if (!Number.isSafeInteger(result.published) || result.published < 0 || !Number.isSafeInteger(result.pending) || result.pending < 0) {
             throw new Error("invalid review outcome");
         }
-        const reasons = formatPendingReasons(result.pendingReasons, result.pending);
-        if (result.pending === 0) {
-            await unlink(path).catch(() => warn("Truthiness finished review but could not remove the staged copy."));
-        }
+        const background = Boolean(process.env.TRUTHINESS_REVIEWER) && needsSemanticReview(result.pendingReasons);
+        if (background) spawn(program, ["review-pending", store, path], { cwd, detached: true, stdio: "ignore" }).unref();
+        const reasons = formatPendingReasons(result.pendingReasons, result.pending, background);
         const summary = `${result.published} published, ${result.pending} pending automatic or operator review.`;
         return [summary, ...reasons].join("\n");
     } catch {
@@ -124,7 +123,13 @@ const pendingActions = {
 } satisfies Record<PendingReason, string>;
 const maxListedIds = 10;
 
-function formatPendingReasons(reasons: unknown, count: number): string[] {
+const backgroundReviewAction = "Under semantic review in the background; approved claims reach the store and the next startup index";
+
+function needsSemanticReview(reasons: unknown): boolean {
+    return Array.isArray(reasons) && reasons.some(entry => entry?.reason === "semantic_review_required");
+}
+
+function formatPendingReasons(reasons: unknown, count: number, background: boolean): string[] {
     if (!Array.isArray(reasons) || reasons.length !== count) throw new Error("invalid pending reasons");
     const labelsByReason = new Map<PendingReason, string[]>();
     for (const entry of reasons as ({ id?: unknown; reason?: unknown } | null)[]) {
@@ -139,6 +144,7 @@ function formatPendingReasons(reasons: unknown, count: number): string[] {
     return [...labelsByReason].map(([reason, labels]) => {
         const listed = labels.slice(0, maxListedIds).join(", ");
         const hidden = labels.length - maxListedIds;
-        return `${pendingActions[reason]}: ${listed}${hidden > 0 ? ` and ${hidden} more` : ""}.`;
+        const action = background && reason === "semantic_review_required" ? backgroundReviewAction : pendingActions[reason];
+        return `${action}: ${listed}${hidden > 0 ? ` and ${hidden} more` : ""}.`;
     });
 }
