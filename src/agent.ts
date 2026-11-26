@@ -1,6 +1,6 @@
 import { execFile, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { realpathSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -99,7 +99,7 @@ export async function stageAndReview(program: string, cwd: string, store: string
             throw new Error("invalid review outcome");
         }
         const background = Boolean(process.env.TRUTHINESS_REVIEWER) && needsSemanticReview(result.pendingReasons);
-        if (background) spawn(program, ["review-pending", store, path], { cwd, detached: true, stdio: "ignore" }).unref();
+        if (background) reviewInBackground(program, cwd, store, path);
         const reasons = formatPendingReasons(result.pendingReasons, result.pending, background);
         const summary = `${result.published} published, ${result.pending} pending automatic or operator review.`;
         return [summary, ...reasons].join("\n");
@@ -108,6 +108,50 @@ export async function stageAndReview(program: string, cwd: string, store: string
         warn(text);
         return text;
     }
+}
+
+const outcomeSuffix = ".outcome.json";
+
+function reviewInBackground(program: string, cwd: string, store: string, path: string) {
+    const outcome = openSync(`${path}${outcomeSuffix}`, "w");
+    spawn(program, ["review-pending", store, path], { cwd, detached: true, stdio: ["ignore", outcome, "ignore"] }).unref();
+    closeSync(outcome);
+}
+
+// shortcut: an outcome left empty by a crashed worker is never reported or removed; add an age cutoff if that shows up.
+export function backgroundReviewNotice(cwd: string, pendingDirectory: string): string | undefined {
+    const directory = resolve(cwd, pendingDirectory);
+    if (!existsSync(directory)) return undefined;
+    const rejected: string[] = [];
+    const unresolved: string[] = [];
+    for (const name of readdirSync(directory).filter(entry => entry.endsWith(outcomeSuffix))) {
+        const path = join(directory, name);
+        const reasons = finishedOutcome(path);
+        if (!reasons) continue;
+        for (const { id, reason } of reasons) {
+            if (reason === "semantic_review_rejected") rejected.push(JSON.stringify(id));
+            if (reason === "semantic_review_required") unresolved.push(JSON.stringify(id));
+        }
+        unlinkSync(path);
+    }
+    const lines = [];
+    if (rejected.length) lines.push(`Truthiness background review rejected ${listed(rejected)}. Revise the claim or its evidence and draft it again.`);
+    if (unresolved.length) lines.push(`Truthiness background review returned no verdict for ${listed(unresolved)}; they stay pending for operator review.`);
+    return lines.length ? lines.join("\n") : undefined;
+}
+
+function finishedOutcome(path: string): { id: unknown; reason: unknown }[] | undefined {
+    try {
+        const { pendingReasons } = JSON.parse(readFileSync(path, "utf8"));
+        return Array.isArray(pendingReasons) ? pendingReasons : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function listed(labels: string[]): string {
+    const hidden = labels.length - maxListedIds;
+    return `${labels.slice(0, maxListedIds).join(", ")}${hidden > 0 ? ` and ${hidden} more` : ""}`;
 }
 
 const pendingActions = {

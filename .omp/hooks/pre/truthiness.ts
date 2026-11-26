@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { anchoredPathsOf, anchoredWarning, cleanSourceRevision, command, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "../../../src/agent.ts";
+import { anchoredPathsOf, anchoredWarning, backgroundReviewNotice, cleanSourceRevision, command, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "../../../src/agent.ts";
 import { bootstrapAllowed, recallContext } from "../../../src/session.ts";
 
 const messageType = "truthiness-index";
@@ -115,7 +115,7 @@ function recallPrompt(hook: Hook, event: AgentStart, cwd: string): string[] | un
 
 async function startupIndex(hook: Hook, ctx: Session) {
     if (!hook.enabled) return;
-    const { store } = memoryPaths(ctx.cwd);
+    const { store, pending } = memoryPaths(ctx.cwd);
     const head = cleanSourceRevision(ctx.cwd);
     if (!store || !head) return;
     // Only an explicit hasUI=false (print/RPC mode) is headless; a missing flag is not.
@@ -134,7 +134,8 @@ async function startupIndex(hook: Hook, ctx: Session) {
     }
     const after = snapshot(ctx.cwd, store);
     if (after?.head !== current.head || after.digest !== current.digest) return;
-    return { message: { customType: messageType, content: index, display: false, details: key } };
+    const notice = pending && backgroundReviewNotice(ctx.cwd, pending);
+    return { message: { customType: messageType, content: notice ? `${index}${notice}\n` : index, display: false, details: key } };
 }
 
 function currentIndexOnly<T extends Message>(hook: Hook, messages: T[], cwd: string): T[] {

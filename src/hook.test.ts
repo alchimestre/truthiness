@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,14 +98,33 @@ test("a prompt gets matching behavioral claims as context, not bare quotes; an u
     expect(runHook("prompt-submit", JSON.stringify({ cwd: repo, prompt: "Rename the logging helper" }))).toBe("");
 });
 
+test("a background rejection is reported once at the next session start", () => {
+    const line = "export const RETRY_LIMIT = 3;";
+    writeFileSync(join(repo, "limits.ts"), `${line}\n`);
+    git("add", "limits.ts");
+    git("commit", "--quiet", "-m", "Limit");
+    const reviewer = join(root, "reviewer");
+    writeFileSync(reviewer, "#!/bin/sh\necho '[]'\n", { mode: 0o700 });
+    runHook("draft", quoteNote("retry-limit", "limits.ts", line, "RETRY_LIMIT allows ten retries."), { TRUTHINESS_REVIEWER: reviewer });
+    const pending = join(repo, ".git", "truthiness", "pending");
+    waitUntil(() => readdirSync(pending).some(name => name.endsWith(".outcome.json") && readFileSync(join(pending, name), "utf8").trim().endsWith("}")), "background outcome");
+    const input = JSON.stringify({ cwd: repo });
+    expect(runHook("session-start", input)).toContain('Truthiness background review rejected "retry-limit"');
+    expect(runHook("session-start", input)).not.toContain("background review");
+});
+
 const backgroundReviewWaitMs = 15_000;
 const pollMs = 100;
 
 function waitForStore(text: string) {
     const store = join(repo, ".truthiness", "canonical.jsonl");
+    waitUntil(() => existsSync(store) && readFileSync(store, "utf8").includes(text), `store entry ${text}`);
+}
+
+function waitUntil(done: () => boolean, label: string) {
     const deadline = Date.now() + backgroundReviewWaitMs;
-    while (!(existsSync(store) && readFileSync(store, "utf8").includes(text))) {
-        if (Date.now() > deadline) throw new Error(`store never gained ${text}`);
+    while (!done()) {
+        if (Date.now() > deadline) throw new Error(`timed out waiting for ${label}`);
         Bun.sleepSync(pollMs);
     }
 }

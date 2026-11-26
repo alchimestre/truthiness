@@ -2,7 +2,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { anchoredPathsOf, anchoredWarning, cleanSourceRevision, command, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "./agent.ts";
+import { anchoredPathsOf, anchoredWarning, backgroundReviewNotice, cleanSourceRevision, command, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "./agent.ts";
 import { bootstrapAllowed, claudeHeadless, recallContext } from "./session.ts";
 
 type HookInput = { cwd?: unknown; tool_input?: unknown; prompt?: unknown };
@@ -34,7 +34,7 @@ function parseHookInput(text: string): { cwd: string; toolInput: unknown; prompt
 }
 
 async function sessionStart({ cwd }: { cwd: string }) {
-    const { store } = memoryPaths(cwd);
+    const { store, pending } = memoryPaths(cwd);
     const head = cleanSourceRevision(cwd);
     if (!store || !head) return;
     if (bootstrapAllowed(claudeHeadless())) {
@@ -45,6 +45,8 @@ async function sessionStart({ cwd }: { cwd: string }) {
         if (index === undefined) return warn("Truthiness could not generate the startup index.");
         process.stdout.write(index);
     }
+    const notice = pending && backgroundReviewNotice(cwd, pending);
+    if (notice) console.log(notice);
     console.log(`To propose notes, pipe store records as JSONL, secrets removed, to \`${self} draft\`. Supported notes publish; the rest stay pending. ${noteFormatHelp}`);
 }
 
