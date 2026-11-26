@@ -201,12 +201,17 @@ function decide(candidates: Candidate[], blobs: Map<string, string | undefined>,
     const result = spawnSync(reviewer, [], { input, encoding: "utf8", timeout: 30_000, maxBuffer: limit });
     if (result.status !== 0) return new Map();
     try {
-        const approved: unknown = JSON.parse(result.stdout);
+        const approved: unknown = JSON.parse(finalArray(result.stdout));
         if (!Array.isArray(approved) || !approved.every(id => typeof id === "string" && ids.has(id))) return new Map();
         return new Map([...ids].map(id => [id, approved.includes(id)]));
     } catch {
         return new Map();
     }
+}
+
+// Models often reason before answering; only the reply's final JSON array is the verdict.
+function finalArray(reply: string): string {
+    return /\[[^[\]]*\]\s*$/.exec(reply)?.[0] ?? reply;
 }
 
 function reviewRequest(candidates: Candidate[], blobs: Map<string, string | undefined>, limit: number) {

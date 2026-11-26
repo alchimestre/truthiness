@@ -116,6 +116,16 @@ console.log(JSON.stringify(candidates.map(candidate => candidate.id)));
     });
 });
 
+test("a reviewer verdict after prose still counts", () => {
+    fixture((cwd, revision) => {
+        const path = join(cwd, "pending.jsonl");
+        const reviewer = join(cwd, "reviewer");
+        writeFileSync(path, batch(revision, "supported", "`parse` returns its argument."));
+        writeFileSync(reviewer, "#!/bin/sh\nprintf '%s\\n' 'The claim [holds] for parse.' '' '[\"supported\"]'\n", { mode: 0o700 });
+        expect(reviewPending(cwd, path, reviewer)).toEqual({ published: 1, pending: 0, pendingReasons: [] });
+    });
+});
+
 test("semantic review sees committed delimiters omitted from a proposed excerpt", () => {
     fixture((cwd, revision) => {
         const path = join(cwd, "pending.jsonl");
