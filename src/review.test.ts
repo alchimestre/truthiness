@@ -165,6 +165,23 @@ console.log(JSON.stringify(input.length <= 64 * 1024 && shown && !("text" in sou
     }, largeSource);
 });
 
+test("an oversized source is reviewed when its secret lies outside the windows, and withheld when inside", () => {
+    const secret = 'const api_key = "test-placeholder-only";';
+    const padding = "// padding\n".repeat(4000);
+    for (const [label, source, published] of [
+        ["outside", `${secret}\n${padding}${excerpt}\n${padding}`, 1],
+        ["inside", `${padding}${secret}\n${excerpt}\n${padding}`, 0],
+    ] as const) {
+        fixture((cwd, revision) => {
+            const path = join(cwd, "pending.jsonl");
+            const reviewer = join(cwd, "reviewer");
+            writeFileSync(path, batch(revision, label, "`parse` returns its argument."));
+            writeFileSync(reviewer, `#!/bin/sh\necho '["${label}"]'\n`, { mode: 0o700 });
+            expect(reviewPending(cwd, path, reviewer)).toMatchObject({ published });
+        }, source);
+    }
+});
+
 test("semantic review sees committed delimiters omitted from a proposed excerpt", () => {
     fixture((cwd, revision) => {
         const path = join(cwd, "pending.jsonl");

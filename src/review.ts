@@ -264,10 +264,11 @@ const windowContextLines = 60;
 function availableSources(candidates: Candidate[], blobs: Map<string, string | undefined>, budget: number): Map<string, string> {
     const available = new Map<string, string>();
     for (const [path, text] of blobs) {
-        if (text === undefined || text.includes("\0") || containsDetectableSecret(text)) continue;
+        if (text === undefined || text.includes("\0")) continue;
         const whole = JSON.stringify({ path, text });
         const excerpts = candidates.flatMap(candidate => candidate.excerpts).filter(excerpt => excerpt.path === path);
-        const source = Buffer.byteLength(whole) <= budget ? whole : windowedSource(path, text, excerpts);
+        const fits = Buffer.byteLength(whole) <= budget;
+        const source = fits ? (containsDetectableSecret(text) ? undefined : whole) : windowedSource(path, text, excerpts);
         if (source && Buffer.byteLength(source) <= budget) available.set(path, source);
     }
     return available;
@@ -285,6 +286,7 @@ function windowedSource(path: string, text: string, excerpts: Excerpt[]): string
     }
     if (!ranges.length) return undefined;
     const windows = mergeRanges(ranges).map(([start, end]) => ({ firstLine: start + 1, text: lines.slice(start, end + 1).join("\n") }));
+    if (windows.some(window => containsDetectableSecret(window.text))) return undefined;
     return JSON.stringify({ path, totalLines: lines.length, windows });
 }
 

@@ -1,6 +1,6 @@
 import { execFile, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, realpathSync, statSync, unlinkSync } from "node:fs";
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -111,14 +111,17 @@ export async function stageAndReview(program: string, cwd: string, store: string
 }
 
 const outcomeSuffix = ".outcome.json";
+const pidSuffix = ".reviewer.pid";
 
 function reviewInBackground(program: string, cwd: string, store: string, path: string) {
     const outcome = openSync(`${path}${outcomeSuffix}`, "w");
-    spawn(program, ["review-pending", store, path], { cwd, detached: true, stdio: ["ignore", outcome, "ignore"] }).unref();
+    const child = spawn(program, ["review-pending", store, path], { cwd, detached: true, stdio: ["ignore", outcome, "ignore"] });
     closeSync(outcome);
+    if (child.pid) writeFileSync(`${path}${pidSuffix}`, String(child.pid));
+    child.unref();
 }
 
-// Longer than one reviewer call (30 s timeout) plus startup, with wide margin.
+// Also bounds a review whose process ID was reused by an unrelated process.
 const crashedReviewAgeMs = 10 * 60 * 1000;
 
 export function backgroundReviewNotice(cwd: string, pendingDirectory: string): string | undefined {
@@ -129,22 +132,35 @@ export function backgroundReviewNotice(cwd: string, pendingDirectory: string): s
     const crashed: string[] = [];
     for (const name of readdirSync(directory).filter(entry => entry.endsWith(outcomeSuffix))) {
         const path = join(directory, name);
+        const batchPath = path.slice(0, -outcomeSuffix.length);
         const reasons = finishedOutcome(path);
         if (reasons) {
             for (const { id, reason } of reasons) {
                 if (reason === "semantic_review_rejected") rejected.push(JSON.stringify(id));
                 if (reason === "semantic_review_required") unresolved.push(JSON.stringify(id));
             }
-        } else if (Date.now() - statSync(path).mtimeMs > crashedReviewAgeMs) {
-            crashed.push(...stagedClaimIDs(path.slice(0, -outcomeSuffix.length)));
+        } else if (!reviewMayBeRunning(path, `${batchPath}${pidSuffix}`)) {
+            crashed.push(...stagedClaimIDs(batchPath));
         } else continue;
         unlinkSync(path);
+        rmSync(`${batchPath}${pidSuffix}`, { force: true });
     }
     const lines = [];
     if (rejected.length) lines.push(`Truthiness background review rejected ${listed(rejected)}. Revise the claim or its evidence and draft it again.`);
     if (unresolved.length) lines.push(`Truthiness background review returned no verdict for ${listed(unresolved)}; they stay pending for operator review.`);
     if (crashed.length) lines.push(`Truthiness background review did not finish for ${listed(crashed)}; they stay pending for operator review.`);
     return lines.length ? lines.join("\n") : undefined;
+}
+
+function reviewMayBeRunning(outcomePath: string, pidPath: string): boolean {
+    if (Date.now() - statSync(outcomePath).mtimeMs > crashedReviewAgeMs) return false;
+    if (!existsSync(pidPath)) return true;
+    try {
+        process.kill(Number(readFileSync(pidPath, "utf8")), 0);
+        return true;
+    } catch (error) {
+        return (error as NodeJS.ErrnoException).code === "EPERM";
+    }
 }
 
 function finishedOutcome(path: string): { id: unknown; reason: unknown }[] | undefined {

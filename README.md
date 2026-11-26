@@ -141,7 +141,7 @@ When a claim says more than its one-line quote, Truthiness also records a hash o
 
 Set `TRUTHINESS_REVIEWER` to an executable that reads JSON and returns a JSON array of approved IDs within 30 seconds, either as the whole reply or as a trailing array block that starts on its own line. The request includes whole committed files up to 64 KiB; larger files are sent as 60-line windows around each quoted excerpt. Use a local model if code must stay on the machine.
 
-Drafts return after the quote check; claims that need the reviewer are reviewed in a background process and reach the store and the next startup index when approved. The next session start lists claims the background reviewer rejected, left without a verdict, or did not finish within 10 minutes.
+Drafts return after the quote check; claims that need the reviewer are reviewed in a background process and reach the store and the next startup index when approved. The next session start lists claims the background reviewer rejected or left without a verdict, and claims whose review process exited without a result or ran past 10 minutes.
 
 [`scripts/truthiness-reviewer.sh`](scripts/truthiness-reviewer.sh) wraps a text-completion command. Use a command without tools or filesystem access: the prompt contains untrusted source.
 

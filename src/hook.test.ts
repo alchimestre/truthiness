@@ -130,6 +130,22 @@ test("a background review that never finished is reported and cleared; one still
     expect(runHook("session-start", input)).not.toContain("background review");
 });
 
+test("a fresh background review is reported as unfinished only once its process is gone", () => {
+    const pending = join(repo, ".git", "truthiness", "pending");
+    mkdirSync(pending, { recursive: true });
+    const dead = join(pending, "dead.jsonl");
+    writeFileSync(dead, `${JSON.stringify({ id: "dead-claim", kind: "claim", text: "x" })}\n`);
+    writeFileSync(`${dead}.outcome.json`, "");
+    writeFileSync(`${dead}.reviewer.pid`, String(Bun.spawnSync(["true"]).pid));
+    const live = join(pending, "live.jsonl");
+    writeFileSync(`${live}.outcome.json`, "");
+    writeFileSync(`${live}.reviewer.pid`, String(process.pid));
+    const notice = runHook("session-start", JSON.stringify({ cwd: repo }));
+    expect(notice).toContain('did not finish for "dead-claim"');
+    expect(existsSync(`${dead}.reviewer.pid`)).toBe(false);
+    expect(existsSync(`${live}.outcome.json`)).toBe(true);
+});
+
 const backgroundReviewWaitMs = 15_000;
 const pollMs = 100;
 
