@@ -107,21 +107,21 @@ describe("lookup index", () => {
 describe("stale notes", () => {
   function stored(): Records {
     return {
-      claim: { id: "claim", kind: "claim", text: "src/cache.ts: const ttl = 60;", scope: "service A", anchors: [{ path: "src/cache.ts" }], check: null, recorded_at: "2026-11-20T09:00:00Z", recorded_by: "agent" },
+      claim: { id: "claim", kind: "claim", text: "The cache keeps entries for 60 seconds.", scope: "service A", anchors: [{ path: "src/cache.ts" }], check: null, recorded_at: "2026-11-20T09:00:00Z", recorded_by: "agent" },
       observation: { id: "observation", kind: "observation", content: "const ttl = 60;", source_ref: "abc:src/cache.ts", captured_at: "2026-11-20T09:00:00Z", context: { revision: "abc", source_event_id: "event-1", check_session: "agent" }, recorded_at: "2026-11-20T09:00:00Z", recorded_by: "agent" },
       evidence: { id: "evidence", kind: "evidence_for", from: "observation", to: "claim", rationale: "Quoted line", assessment: { outcome: "supports", scope: "service A", revision: "abc" }, recorded_at: "2026-11-20T09:00:00Z", recorded_by: "agent" },
     };
   }
 
-  test("reports once-valid claims as stale and not never-verified ones", () => {
+  test("reports once-valid behavioral claims as stale, not bare quotes or never-verified ones", () => {
     const data = stored();
     data.never = { id: "never", kind: "claim", text: "never checked", scope: "service A" };
-    data.landmark = { ...data.claim, id: "landmark", recorded_by: "bootstrap-source-scanner" };
-    data.landmarkEvidence = { ...data.evidence, id: "landmarkEvidence", to: "landmark" };
+    data.quote = { ...data.claim, id: "quote", text: "src/cache.ts: const ttl = 60;" };
+    data.quoteEvidence = { ...data.evidence, id: "quoteEvidence", to: "quote" };
     const output = index(data, "service A", "def", (value) => value.length);
     expect(output).toContain('Stale notes hidden (1): "claim"');
     expect(output).not.toContain('"never"');
-    expect(output).not.toContain('"landmark"');
+    expect(output).not.toContain('"quote"');
     expect(index(data, "service A", "abc", (value) => value.length)).not.toContain("Stale notes");
   });
 

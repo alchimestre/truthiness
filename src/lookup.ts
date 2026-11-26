@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { landmarkAuthor } from "./bootstrap.ts";
 
 export type RecordData = Record<string, unknown>;
 export type Records = Record<string, RecordData>;
@@ -318,11 +317,11 @@ export function staleClaims(records: Records, scope: string, revision: string): 
     .map(([id]) => id);
 }
 
-// Bootstrap reseeds landmarks from current source, so a stale one has nothing for an agent to refresh.
+// A bare `path: line` quote claims only that the line exists; once it is gone there is nothing to refresh.
 function staleCandidate(records: Records, claimID: string, scope: string, revision: string): boolean {
   const claim = records[claimID];
   return text(claim, "kind") === "claim"
-    && text(claim, "recorded_by") !== landmarkAuthor
+    && !isBareQuote(records, claimID)
     && inScope(claim, scope)
     && assess(records, claimID, text(claim, "scope"), revision).status === "recheck_required";
 }
@@ -353,6 +352,14 @@ function supportingObservations(records: Records, claimID: string): RecordData[]
       return observation && text(observation, "kind") === "observation" ? [observation] : [];
     })
     .sort((left, right) => text(right, "captured_at").localeCompare(text(left, "captured_at")));
+}
+
+function isBareQuote(records: Records, claimID: string): boolean {
+  const claim = records[claimID]!;
+  const anchors: unknown[] = Array.isArray(claim.anchors) ? claim.anchors : [];
+  const anchor = object(anchors[0]);
+  if (anchors.length !== 1 || !anchor || anchor.symbol !== undefined) return false;
+  return supportingObservations(records, claimID).some((observation) => text(claim, "text") === `${text(anchor, "path")}: ${text(observation, "content").trim()}`);
 }
 
 function staleNotice(staleIDs: string[]): string {
