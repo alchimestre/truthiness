@@ -2,13 +2,13 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { anchoredPathsOf, anchoredWarning, cleanSourceRevision, command, defaultProgram, defaultTokenizer, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "./agent.ts";
+import { anchoredPathsOf, anchoredWarning, cleanSourceRevision, command, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "./agent.ts";
 import { bootstrapAllowed, claudeHeadless, recallContext } from "./session.ts";
 
 type HookInput = { cwd?: unknown; tool_input?: unknown; prompt?: unknown };
 
 const program = process.env.TRUTHINESS_COMMAND || defaultProgram;
-const tokenizer = process.env.TRUTHINESS_TOKENIZER || defaultTokenizer;
+const tokenizer = process.env.TRUTHINESS_TOKENIZER;
 const self = fileURLToPath(import.meta.url);
 const patchTarget = /^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm;
 const warn = (text: string) => console.error(text);
@@ -41,7 +41,7 @@ async function sessionStart({ cwd }: { cwd: string }) {
         await runWorker(program, ["bootstrap", store], { cwd, timeout: 15_000 }).catch(() => warn("Truthiness could not bootstrap project memory."));
     }
     if (existsSync(resolve(cwd, store))) {
-        const index = command(program, ["index", store, "", head, tokenizer], cwd);
+        const index = command(program, ["index", store, "", head, ...tokenizerArgument(tokenizer)], cwd);
         if (index === undefined) return warn("Truthiness could not generate the startup index.");
         process.stdout.write(index);
     }

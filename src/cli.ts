@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from "node:util";
 import { sourceRevision } from "./agent.ts";
 import { bootstrap, checkedAt, readBlob, readBlobsAt } from "./bootstrap.ts";
 import { claimRecordIDs, load, parseProposal, publish, publishAuthorized, publishRechecks, stage, unstage, type Graph } from "./store.ts";
-import { anchoredPaths, index, query, staleDraft } from "./lookup.ts";
+import { anchoredPaths, estimateTokens, index, query, staleDraft } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
 import { digest, recheckBatch, review, type PendingReason } from "./review.ts";
 
@@ -12,7 +12,7 @@ const maxProposalBytes = 16 * 1024 * 1024;
 
 async function run(args: string[]) {
     const [command, path, ...options] = args;
-    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE TOKENIZER | index STORE SCOPE REVISION TOKENIZER | stale STORE SCOPE REVISION | anchors STORE | stage PENDING | bootstrap STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE | pending STORE PENDING_FILE | pending-approve STORE PENDING_FILE CLAIM_ID | pending-decline STORE PENDING_FILE CLAIM_ID");
+    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE [TOKENIZER] | index STORE SCOPE REVISION [TOKENIZER] | stale STORE SCOPE REVISION | anchors STORE | stage PENDING | bootstrap STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE | pending STORE PENDING_FILE | pending-approve STORE PENDING_FILE CLAIM_ID | pending-decline STORE PENDING_FILE CLAIM_ID");
     switch (command) {
         case "validate":
             requireOptions(options, 0);
@@ -23,15 +23,15 @@ async function run(args: string[]) {
             console.log(JSON.stringify(currentAxioms(await load(path), options[0])));
             return;
         case "query": {
-            requireOptions(options, 1);
+            requireOptions(options, 0, 1);
             const request = JSON.parse(await readInput());
-            console.log(JSON.stringify(query(await load(path), request, input => countTokens(options[0], input))));
+            console.log(JSON.stringify(query(await load(path), request, tokenCounter(options[0]))));
             return;
         }
         case "index": {
-            requireOptions(options, 3);
+            requireOptions(options, 2, 1);
             const [scope, revision, tokenizer] = options;
-            const text = await index(await load(path), scope, revision, input => countTokens(tokenizer, input));
+            const text = await index(await load(path), scope, revision, tokenCounter(tokenizer));
             process.stdout.write(text);
             return;
         }
@@ -151,8 +151,12 @@ function head(directory: string): string {
     return revision;
 }
 
-function requireOptions(options: string[], expected: number) {
-    if (options.length !== expected) throw new Error("invalid arguments");
+function requireOptions(options: string[], expected: number, optional = 0) {
+    if (options.length < expected || options.length > expected + optional) throw new Error("invalid arguments");
+}
+
+function tokenCounter(program: string | undefined): (input: string) => number {
+    return program ? input => countTokens(program, input) : estimateTokens;
 }
 
 async function readInput() {

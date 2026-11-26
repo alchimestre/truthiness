@@ -18,7 +18,6 @@
     "src/store.ts",
     ".omp/hooks/pre/truthiness.ts",
     "scripts/truthiness-reviewer.sh",
-    "scripts/truthiness-tokenizer.sh",
     "assets/hero.svg",
     "assets/lifecycle.svg"
   ],

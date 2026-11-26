@@ -20,11 +20,10 @@ test("bootstraps startup memory and reviews staged drafts without a second sessi
     const repo = mkdtempSync(join(tmpdir(), "truthiness-repo-"));
     const state = mkdtempSync(join(tmpdir(), "truthiness-state-"));
     const store = join(state, "canonical.jsonl");
-    const tokenizer = join(state, "tokenizer");
     const environment = {
         TRUTHINESS_COMMAND: executable,
         TRUTHINESS_STORE: store,
-        TRUTHINESS_TOKENIZER: tokenizer,
+        TRUTHINESS_TOKENIZER: "",
         TRUTHINESS_PENDING: state,
         TRUTHINESS_BOOTSTRAP: "on",
         TRUTHINESS_REVIEWER: "",
@@ -35,7 +34,6 @@ test("bootstraps startup memory and reviews staged drafts without a second sessi
         writeFileSync(join(repo, "README.md"), "# Parser guide\n");
         git(repo, "add", "README.md");
         git(repo, "commit", "-m", "Guide");
-        writeFileSync(tokenizer, "#!/bin/sh\nwc -c\n", { mode: 0o700 });
         Object.assign(process.env, environment);
         await exerciseLifecycle(repo, state, store);
     } finally {

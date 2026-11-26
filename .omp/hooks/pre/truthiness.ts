@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { anchoredPathsOf, anchoredWarning, cleanSourceRevision, command, defaultProgram, defaultTokenizer, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "../../../src/agent.ts";
+import { anchoredPathsOf, anchoredWarning, cleanSourceRevision, command, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "../../../src/agent.ts";
 import { bootstrapAllowed, recallContext } from "../../../src/session.ts";
 
 const messageType = "truthiness-index";
@@ -33,13 +33,13 @@ type Message = { role: string; customType?: string; details?: unknown };
 type HookAPI = Pick<ExtensionAPI, "appendEntry" | "on" | "registerCommand" | "registerTool" | "zod"> & {
     logger: Pick<ExtensionAPI["logger"], "warn">;
 };
-type Hook = { pi: HookAPI; program: string; tokenizer: string; enabled: boolean };
+type Hook = { pi: HookAPI; program: string; tokenizer: string | undefined; enabled: boolean };
 
 export default function truthinessHook(pi: HookAPI): void {
     const hook: Hook = {
         pi,
         program: process.env.TRUTHINESS_COMMAND || defaultProgram,
-        tokenizer: process.env.TRUTHINESS_TOKENIZER || defaultTokenizer,
+        tokenizer: process.env.TRUTHINESS_TOKENIZER,
         enabled: true,
     };
     registerModeCommand(hook);
@@ -127,7 +127,7 @@ async function startupIndex(hook: Hook, ctx: Session) {
     if (!current) return;
     const key = `${current.head}:${current.digest}`;
     if (ctx.sessionManager.getBranch().some(entry => entry.type === "custom_message" && entry.customType === messageType && entry.details === key)) return;
-    const index = command(hook.program, ["index", store, "", current.head, hook.tokenizer], ctx.cwd);
+    const index = command(hook.program, ["index", store, "", current.head, ...tokenizerArgument(hook.tokenizer)], ctx.cwd);
     if (index === undefined) {
         hook.pi.logger.warn("Truthiness could not generate the startup index.");
         return;

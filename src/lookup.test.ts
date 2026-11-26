@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { anchoredPaths, index, query, staleClaims, staleDraft, type Records, type Request } from "./lookup.ts";
+import { anchoredPaths, estimateTokens, index, query, staleClaims, staleDraft, type Records, type Request } from "./lookup.ts";
 import { parseProposal } from "./store.ts";
 
 function records(outcome = "supports", scope = "service A", revision = "abc"): Records {
@@ -119,6 +119,18 @@ describe("lookup index", () => {
     expect(output).toContain("Omitted eligible entries");
     expect(output.split("\n").filter(Boolean).length).toBeLessThanOrEqual(60);
     expect(() => index(records(), "service A", "abc", () => -1)).toThrow("token counter failed");
+  });
+
+  test("default estimate counts UTF-8 bytes and keeps the whole index within budget", () => {
+    expect(estimateTokens("é€")).toBe(3);
+    const data = records();
+    for (let entry = 0; entry < 40; entry++) {
+      data[`claim-${entry}`] = { id: `claim-${entry}`, kind: "claim", text: "é".repeat(100), scope: "service A" };
+      data[`evidence-${entry}`] = { ...data.evidence, id: `evidence-${entry}`, to: `claim-${entry}` };
+    }
+    const output = index(data, "service A", "abc", estimateTokens);
+    expect(output).toContain("Omitted eligible entries");
+    expect(estimateTokens(output)).toBeLessThanOrEqual(1200);
   });
 
   test("lists agent claims before bare-quote landmarks even when the landmark id sorts first", () => {

@@ -87,7 +87,7 @@ Commit `.truthiness/canonical.jsonl` with your code. Recheck results go to `cano
 | `TRUTHINESS_STORE` | `.truthiness/canonical.jsonl` at the repository root |
 | `TRUTHINESS_PENDING` | `truthiness/pending` in the Git directory |
 | `TRUTHINESS_COMMAND` | [`src/cli.ts`](src/cli.ts) |
-| `TRUTHINESS_TOKENIZER` | [`scripts/truthiness-tokenizer.sh`](scripts/truthiness-tokenizer.sh) |
+| `TRUTHINESS_TOKENIZER` | Unset: built-in estimate of one token per two bytes. Set: a program that reads text on stdin and prints a token count |
 | `TRUTHINESS_BOOTSTRAP` | On. `off` skips seeding and rechecking the store at startup. Headless sessions skip it unless set to `on` |
 
 </details>
@@ -99,12 +99,11 @@ Run in a committed Git repository. The store is temporary.
 
 ```sh
 STORE=$(mktemp -d)/store.jsonl
-TOKENIZER=/path/to/truthiness/scripts/truthiness-tokenizer.sh
 truthiness bootstrap "$STORE"
 ```
 
 ```sh
-truthiness index "$STORE" "" "$(git rev-parse HEAD)" "$TOKENIZER"
+truthiness index "$STORE" "" "$(git rev-parse HEAD)"
 ```
 
 </details>
@@ -157,9 +156,9 @@ export TRUTHINESS_REVIEW_COMMAND=llm
 | Command | Use |
 | --- | --- |
 | `truthiness bootstrap STORE` | Seed and recheck notes against the latest source commit. Paths with the `truthiness` attribute unset in `.gitattributes` (`bench/** -truthiness`) are not seeded. |
-| `truthiness index STORE SCOPE REVISION TOKENIZER` | Print the startup index, with a count of stale notes it hides. Use `""` for an unscoped index. |
+| `truthiness index STORE SCOPE REVISION [TOKENIZER]` | Print the startup index, with a count of stale notes it hides. Use `""` for an unscoped index. |
 | `truthiness stale STORE SCOPE REVISION` | Print a refresh draft for the first stale note. Edit its quoted line, then stage it. Prints nothing when none is stale. |
-| `truthiness query STORE TOKENIZER` | Look up notes via a JSON request on stdin (`id`, `sparse`, `flat` or `graph`). `explain: true` adds `score` and `terms` to sparse matches. |
+| `truthiness query STORE [TOKENIZER]` | Look up notes via a JSON request on stdin (`id`, `sparse`, `flat` or `graph`). `explain: true` adds `score` and `terms` to sparse matches. |
 | `truthiness anchors STORE` | List files quoted by valid notes. Re-read them before editing. |
 | `truthiness stage PENDING_FILE` | Stage a JSONL draft from stdin. |
 | `truthiness review-pending STORE PENDING_FILE` | Publish supported drafts and return reason codes for the rest. |
@@ -172,10 +171,10 @@ export TRUTHINESS_REVIEW_COMMAND=llm
 Look up one note:
 
 ```sh
-printf '%s\n' '{"mode":"id","id":"NOTE_ID","scope":"repo","revision":"REVISION"}' | truthiness query "$STORE" "$TOKENIZER"
+printf '%s\n' '{"mode":"id","id":"NOTE_ID","scope":"repo","revision":"REVISION"}' | truthiness query "$STORE"
 ```
 
-`TOKENIZER` reads text on stdin and prints a token count. The bundled script estimates one token per three bytes.
+Optional `TOKENIZER` reads text on stdin and prints a token count. Without it, Truthiness estimates one token per two bytes, which overcounts current Claude tokenizers.
 
 </details>
 

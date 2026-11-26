@@ -1,4 +1,4 @@
-import { command } from "./agent.ts";
+import { command, tokenizerArgument } from "./agent.ts";
 import { escapeForIndex, type Result } from "./lookup.ts";
 
 export const recallLimit = 5;
@@ -17,10 +17,10 @@ export function bootstrapAllowed(headless: boolean): boolean {
     return setting === "on" || !headless;
 }
 
-export function recallContext(program: string, store: string, revision: string, tokenizer: string, cwd: string, prompt: string): string | undefined {
+export function recallContext(program: string, store: string, revision: string, tokenizer: string | undefined, cwd: string, prompt: string): string | undefined {
     if (!prompt.trim()) return undefined;
     const request = { mode: "sparse", query: prompt, scope: "repo", revision };
-    const output = command(program, ["query", store, tokenizer], cwd, JSON.stringify(request));
+    const output = command(program, ["query", store, ...tokenizerArgument(tokenizer)], cwd, JSON.stringify(request));
     if (output === undefined) return undefined;
     const claims = (JSON.parse(output) as Result).matches
         .filter(match => match.record.kind === "claim" && match.assessment.status === "may_steer" && !quotesOnlyItsFile(match.record))
