@@ -74,6 +74,24 @@ describe("lookup query", () => {
   test("fails closed when the response tokenizer fails", () => {
     expect(query(records(), request(), () => -1).state).toBe("unavailable");
   });
+
+  test("sparse ranking weights rare terms above common ones and explains scores", () => {
+    const data: Records = {
+      rare: { id: "rare", kind: "claim", text: "zebra note", scope: "service A" },
+      common: { id: "common", kind: "claim", text: "cache note", scope: "service A" },
+      other: { id: "other", kind: "claim", text: "cache index", scope: "service A" },
+      more: { id: "more", kind: "claim", text: "cache lookup", scope: "service A" },
+    };
+    const result = query(data, request({ mode: "sparse", query: "zebra cache", explain: true }));
+    expect(result.matches.slice(0, 2).map(({ record }) => record.id)).toEqual(["rare", "common"]);
+    expect(result.matches[0]?.terms).toEqual(["zebra"]);
+    expect(result.matches[0]?.score).toBeGreaterThan(result.matches[1]?.score ?? 0);
+    expect(query(data, request({ mode: "sparse", query: "zebra cache" })).matches[0]).not.toHaveProperty("score");
+  });
+
+  test("rejects a non-boolean explain flag", () => {
+    expect(query(records(), request({ mode: "sparse", query: "cache", explain: "yes" as unknown as boolean })).state).toBe("invalid_request");
+  });
 });
 
 describe("lookup index", () => {
@@ -101,6 +119,15 @@ describe("lookup index", () => {
     expect(output).toContain("Omitted eligible entries");
     expect(output.split("\n").filter(Boolean).length).toBeLessThanOrEqual(60);
     expect(() => index(records(), "service A", "abc", () => -1)).toThrow("token counter failed");
+  });
+
+  test("lists agent claims before bare-quote landmarks even when the landmark id sorts first", () => {
+    const data = records();
+    data["a-landmark"] = { id: "a-landmark", kind: "claim", text: "src/a.ts: const x = 1;", scope: "service A", anchors: [{ path: "src/a.ts" }] };
+    data["a-observation"] = { id: "a-observation", kind: "observation", content: "const x = 1;\n", context: { source_event_id: "event-3", revision: "abc" } };
+    data["a-evidence"] = { id: "a-evidence", kind: "evidence_for", from: "a-observation", to: "a-landmark", assessment: { outcome: "supports", scope: "service A", revision: "abc" } };
+    const ids = index(data, "service A", "abc", (value) => value.length).split("\n").filter((line) => line.startsWith("{")).map((line) => JSON.parse(line).id);
+    expect(ids).toEqual(["claim", "a-landmark"]);
   });
 });
 
