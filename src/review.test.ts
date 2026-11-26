@@ -319,6 +319,48 @@ test("a rewritten body hides a behavioral note whose quoted line survives, not a
     }, `${opener}\n    return value;\n}\n`);
 });
 
+test("a recheck skips the reviewer only when the store shows the code around the quote unchanged", () => {
+    const opener = "export function parse(value) {";
+    const leaf = "    return value;";
+    fixture((cwd, revision) => {
+        const path = join(cwd, "pending.jsonl");
+        const approveAll = join(cwd, "approve-all");
+        const rejectAll = join(cwd, "reject-all");
+        writeFileSync(approveAll, "#!/usr/bin/env bun\nconst { candidates } = await Bun.stdin.json();\nconsole.log(JSON.stringify(candidates.map(candidate => candidate.id)));\n", { mode: 0o700 });
+        writeFileSync(rejectAll, "#!/bin/sh\necho '[]'\n", { mode: 0o700 });
+        writeFileSync(path, batch(revision, "behavior", "`parse` returns its argument unchanged.", opener) + batch(revision, "leaf", "`parse` hands back its argument.", leaf));
+        expect(reviewPending(cwd, path, approveAll)).toMatchObject({ published: 2 });
+        writeFileSync(join(cwd, "other.js"), "export const other = 1;\n");
+        git(cwd, "add", "other.js");
+        git(cwd, "commit", "-qm", "Unrelated file");
+        const elsewhere = git(cwd, "rev-parse", "HEAD");
+        expect(recheckedAt(cwd, rejectAll, elsewhere, ["behavior", "leaf"])).toEqual({ behavior: true, leaf: true });
+        const near = commitParser(cwd, `${opener}\n${leaf}\n}\n// note\n`);
+        expect(recheckedAt(cwd, rejectAll, near, ["behavior", "leaf"])).toEqual({ behavior: true, leaf: false });
+    }, `export function parse(value) {\n    return value;\n}\n`);
+});
+
+test("a draft shaped like a recheck of a published claim still needs the reviewer", () => {
+    const opener = "export function parse(value) {";
+    fixture((cwd, revision) => {
+        const path = join(cwd, "pending.jsonl");
+        const rejectAll = join(cwd, "reject-all");
+        writeFileSync(rejectAll, "#!/bin/sh\necho '[]'\n", { mode: 0o700 });
+        writeFileSync(path, batch(revision, "behavior", "`parse` returns its argument unchanged.", opener));
+        expect(reviewPending(cwd, path, rejectAll)).toMatchObject({ published: 0, pendingReasons: [{ id: "behavior", reason: "semantic_review_rejected" }] });
+        writeFileSync(path, batch(revision, "seed", "`parse` returns its argument.", opener));
+        Bun.spawnSync(["bun", cli, "pending-approve", "canonical.jsonl", "pending.jsonl", "seed"], { cwd });
+        const stored = readFileSync(join(cwd, "canonical.jsonl"), "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
+        const block = stored.find(record => record.id === "seed-source").context.block_sha256;
+        const forged = batch(revision, "forged", "`parse` validates its argument.", opener).split("\n").filter(Boolean).map(line => {
+            const record = { ...JSON.parse(line), recorded_by: "truthiness-recheck" };
+            return JSON.stringify(record.kind === "observation" ? { ...record, context: { ...record.context, block_sha256: block } } : record);
+        });
+        writeFileSync(path, `${forged.join("\n")}\n`);
+        expect(reviewPending(cwd, path, rejectAll)).toMatchObject({ published: 0, pendingReasons: [{ id: "forged", reason: "semantic_review_rejected" }] });
+    }, `${opener}\n    return value;\n}\n`);
+});
+
 test("a one-line quote must be unique in its file; a multi-line excerpt may repeat a line", () => {
     const source = "function a() {\n    return 1;\n}\nfunction b() {\n    return 1;\n}\n";
     fixture((cwd, revision) => {
@@ -344,12 +386,11 @@ function commitParser(cwd: string, source: string) {
     return git(cwd, "rev-parse", "HEAD");
 }
 
-function recheckedAt(cwd: string, reviewer: string, revision: string) {
+function recheckedAt(cwd: string, reviewer: string, revision: string, ids = ["quote", "behavior"]) {
     const run = Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl"], { cwd, env: { ...process.env, TRUTHINESS_REVIEWER: reviewer } });
     expect(run.exitCode).toBe(0);
     const store = readFileSync(join(cwd, "canonical.rechecks.jsonl"), "utf8");
-    const rechecked = (id: string) => store.includes(`"id":"${id}-recheck-${revision.slice(0, 12)}-0"`);
-    return { quote: rechecked("quote"), behavior: rechecked("behavior") };
+    return Object.fromEntries(ids.map(id => [id, store.includes(`"id":"${id}-recheck-${revision.slice(0, 12)}-0"`)]));
 }
 
 function reviewPending(cwd: string, path: string, reviewer = "") {

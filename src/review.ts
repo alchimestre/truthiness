@@ -12,7 +12,7 @@ export type PendingReason = "invalid_batch" | "missing_evidence" | "invalid_evid
     "source_mismatch" | "ambiguous_quote" | "missing_anchor_coverage" | "semantic_review_required" | "semantic_review_rejected";
 type PendingClaim = { id: string | null; reason: PendingReason };
 
-export function review(batch: string, revision: string, readSource: Source, reviewer?: string, humanApprovedIDs: ReadonlySet<string> = new Set()) {
+export function review(batch: string, revision: string, readSource: Source, reviewer?: string, alreadyReviewed: (claimID: string) => boolean = () => false) {
     const graph = parseProposal(batch);
     const records = Object.values(graph);
     const claims = records.filter(record => record.kind === "claim");
@@ -34,13 +34,13 @@ export function review(batch: string, revision: string, readSource: Source, revi
         if (typeof result === "string") pendingReasons.push({ id: claim.id, reason: result });
         else groups.push(result);
     }
-    const semantic = groups.filter(group => !group.exact).map(group => group.candidate);
+    const semantic = groups.filter(group => !group.exact && !alreadyReviewed(String(group.candidate.id))).map(group => group.candidate);
     const verdicts = reviewer && semantic.length ? decide(semantic, sources, reviewer) : new Map<string, boolean>();
     const approved = new Map<string, RecordLine>();
     let published = 0;
     for (const group of groups) {
         const verdict = verdicts.get(group.candidate.id);
-        if (!group.exact && !verdict && !humanApprovedIDs.has(group.candidate.id)) {
+        if (!group.exact && !verdict && !alreadyReviewed(String(group.candidate.id))) {
             const reason = verdict === false ? "semantic_review_rejected" : "semantic_review_required";
             pendingReasons.push({ id: group.candidate.id, reason });
             continue;
@@ -79,6 +79,49 @@ export function recheckBatch(store: Graph, revision: string): string {
         }
     }
     return lines.map(line => `${JSON.stringify(line)}\n`).join("");
+}
+
+const unchangedContextLines = 3;
+const emptyBlockDigest = createHash("sha256").update("").digest("hex");
+
+// Built from the published store only: a draft can forge recheck-shaped records, so drafts must never get this predicate.
+export function unchangedSinceReview(store: Graph, revision: string, read: (revision: string, path: string) => string | undefined) {
+    const evidence = evidenceByClaim(store);
+    return (claimID: string): boolean => {
+        const links = evidence.get(claimID) ?? [];
+        const claim = store[claimID];
+        if (claim?.kind !== "claim" || claim.check !== null || !links.length) return false;
+        if (links.some(link => (link.assessment as Record<string, unknown> | undefined)?.outcome !== "supports")) return false;
+        const settled = new Map<string, boolean>();
+        for (const link of links) {
+            const observation = store[String(link.from)];
+            const reference = String(observation?.source_ref);
+            const path = reference.slice(reference.indexOf(":") + 1);
+            const content = String(observation?.content).replace(/\r\n/g, "\n").replace(/\n$/, "");
+            const key = JSON.stringify([path, content]);
+            settled.set(key, settled.get(key) || excerptUnchanged(observation, path, content, revision, read));
+        }
+        return [...settled.values()].every(Boolean);
+    };
+}
+
+// verifyClaim already requires a stored non-empty block digest to match; a leaf line has no block, so its neighbours must match instead.
+function excerptUnchanged(observation: RecordLine | undefined, path: string, content: string, revision: string, read: (revision: string, path: string) => string | undefined): boolean {
+    const context = (observation?.context ?? {}) as Record<string, unknown>;
+    const block = context.block_sha256;
+    if (!content.includes("\n") && typeof block === "string" && block !== emptyBlockDigest) return true;
+    const before = surroundings(read(String(context.revision), path), content);
+    return before !== undefined && before === surroundings(read(revision, path), content);
+}
+
+function surroundings(source: string | undefined, excerpt: string): string | undefined {
+    if (source === undefined) return undefined;
+    const lines = source.replace(/\r\n/g, "\n").split("\n");
+    const quoted = excerpt.split("\n");
+    const single = quoted.length === 1;
+    const starts = lines.flatMap((_, start) => quoted.every((line, offset) => single ? lines[start + offset]?.trim() === line.trim() : lines[start + offset] === line) ? [start] : []);
+    if (starts.length !== 1) return undefined;
+    return lines.slice(Math.max(0, starts[0] - unchangedContextLines), starts[0] + quoted.length + unchangedContextLines).join("\n");
 }
 
 function evidenceByClaim(store: Graph) {

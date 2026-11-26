@@ -137,6 +137,8 @@ Use unique record IDs. Each anchor needs its own observation. Keep `claim.check`
 
 When a claim says more than its one-line quote, Truthiness also records a hash of the block that line opens: its indented body, or the section under a Markdown heading. When that block changes, the claim is hidden until it is redrafted, even if the quoted line is still present. A bare `path: line` quote is unaffected.
 
+On a new commit, a published claim stays shown without a reviewer call while its quoted line and that block are unchanged. A quoted line that opens no block also needs the 3 lines above and below it unchanged. Otherwise the claim goes back to the reviewer.
+
 ### Reviewer
 
 Set `TRUTHINESS_REVIEWER` to an executable that reads JSON and returns a JSON array of approved IDs within 30 seconds, either as the whole reply or as a trailing array block that starts on its own line. The request includes whole committed files up to 64 KiB; larger files are sent as 60-line windows around each quoted excerpt. Use a local model if code must stay on the machine.

@@ -6,7 +6,7 @@ import { bootstrap, checkedAt, readBlob, readBlobsAt } from "./bootstrap.ts";
 import { claimRecordIDs, load, parseProposal, publish, publishAuthorized, publishRechecks, stage, unstage, type Graph } from "./store.ts";
 import { anchoredPaths, estimateTokens, index, query, staleDraft } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
-import { digest, recheckBatch, review, type PendingReason } from "./review.ts";
+import { digest, recheckBatch, review, unchangedSinceReview, type PendingReason } from "./review.ts";
 
 const maxProposalBytes = 16 * 1024 * 1024;
 
@@ -102,10 +102,18 @@ async function seedLandmarks(store: string, directory: string, revision: string,
 }
 
 async function recheckStore(store: string, directory: string, revision: string) {
-    const batch = recheckBatch(await loadIfPresent(store), revision);
+    const graph = await loadIfPresent(store);
+    const batch = recheckBatch(graph, revision);
     if (!batch) return;
     const sources = readBlobsAt(directory, revision, observedPaths(batch));
-    const result = review(batch, revision, path => sources.get(path), process.env.TRUTHINESS_REVIEWER);
+    const earlier = new Map<string, string | undefined>();
+    const read = (at: string, path: string) => {
+        if (at === revision) return sources.get(path);
+        const key = `${at}:${path}`;
+        if (!earlier.has(key)) earlier.set(key, readBlob(directory, at, path));
+        return earlier.get(key);
+    };
+    const result = review(batch, revision, path => sources.get(path), process.env.TRUTHINESS_REVIEWER, unchangedSinceReview(graph, revision, read));
     await publishNew(store, result.approved, payload => publishRechecks(store, payload));
     if (result.published) console.log(`Rechecked ${result.published} claims; ${result.pending} need a fresh check.`);
 }
@@ -205,7 +213,7 @@ async function approvePending(store: string, pending: string, claimID: string, d
     const graph = parseProposal(text);
     const batch = claimRecordIDs(graph, claimID).map(id => `${JSON.stringify(graph[id])}\n`).join("");
     const revision = head(directory);
-    const result = review(batch, revision, path => readBlob(directory, revision, path), undefined, new Set([claimID]));
+    const result = review(batch, revision, path => readBlob(directory, revision, path), undefined, id => id === claimID);
     if (result.pending) throw new Error(`claim ${claimID} not published: ${result.pendingReasons[0].reason}`);
     if (head(directory) !== revision) throw new Error("Source revision changed during review; batch remains pending");
     const published = await publishNew(store, result.approved);
