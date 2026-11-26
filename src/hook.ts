@@ -3,8 +3,9 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { anchoredPathsOf, anchoredWarning, cleanSourceRevision, command, defaultProgram, defaultTokenizer, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "./agent.ts";
+import { bootstrapAllowed, claudeHeadless, recallContext } from "./session.ts";
 
-type HookInput = { cwd?: unknown; tool_input?: unknown };
+type HookInput = { cwd?: unknown; tool_input?: unknown; prompt?: unknown };
 
 const program = process.env.TRUTHINESS_COMMAND || defaultProgram;
 const tokenizer = process.env.TRUTHINESS_TOKENIZER || defaultTokenizer;
@@ -16,22 +17,27 @@ const [event] = process.argv.slice(2);
 const input = await new Response(Bun.stdin.stream()).text();
 if (event === "session-start") await sessionStart(parseHookInput(input));
 else if (event === "post-edit") await postEdit(parseHookInput(input));
+else if (event === "prompt-submit") await promptSubmit(parseHookInput(input));
 else if (event === "draft") await draft(input);
 else {
-    console.error("usage: hook.ts session-start | post-edit | draft");
+    console.error("usage: hook.ts session-start | post-edit | prompt-submit | draft");
     process.exit(2);
 }
 
-function parseHookInput(text: string): { cwd: string; toolInput: unknown } {
+function parseHookInput(text: string): { cwd: string; toolInput: unknown; prompt: string } {
     const parsed = JSON.parse(text) as HookInput;
-    return { cwd: typeof parsed.cwd === "string" ? parsed.cwd : process.cwd(), toolInput: parsed.tool_input };
+    return {
+        cwd: typeof parsed.cwd === "string" ? parsed.cwd : process.cwd(),
+        toolInput: parsed.tool_input,
+        prompt: typeof parsed.prompt === "string" ? parsed.prompt : "",
+    };
 }
 
 async function sessionStart({ cwd }: { cwd: string }) {
     const { store } = memoryPaths(cwd);
     const head = cleanSourceRevision(cwd);
     if (!store || !head) return;
-    if (process.env.TRUTHINESS_BOOTSTRAP !== "off") {
+    if (bootstrapAllowed(claudeHeadless())) {
         await runWorker(program, ["bootstrap", store], { cwd, timeout: 15_000 }).catch(() => warn("Truthiness could not bootstrap project memory."));
     }
     if (existsSync(resolve(cwd, store))) {
@@ -50,6 +56,14 @@ async function postEdit({ cwd, toolInput }: { cwd: string; toolInput: unknown })
     const quoted = anchored ? edited.filter(path => anchored.has(path)) : [];
     const context = anchored ? (quoted.length ? anchoredWarning(quoted) : undefined) : unknownTargetWarning;
     if (context) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: context } }));
+}
+
+async function promptSubmit({ cwd, prompt }: { cwd: string; prompt: string }) {
+    const { store } = memoryPaths(cwd);
+    const head = cleanSourceRevision(cwd);
+    if (!store || !head || !existsSync(resolve(cwd, store))) return;
+    const context = recallContext(program, store, head, tokenizer, cwd, prompt);
+    if (context) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context } }));
 }
 
 // Claude Code edit tools name the file; Codex apply_patch sends the patch text as `command`.

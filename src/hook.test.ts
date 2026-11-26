@@ -16,9 +16,10 @@ function git(...args: string[]) {
     return output.stdout.toString().trim();
 }
 
-function runHook(event: string, input: string) {
+function runHook(event: string, input: string, extra: Record<string, string> = {}) {
     const environment: Record<string, string | undefined> = { ...process.env, TRUTHINESS_REVIEWER: "" };
-    for (const key of ["TRUTHINESS_STORE", "TRUTHINESS_PENDING", "TRUTHINESS_COMMAND", "TRUTHINESS_TOKENIZER", "TRUTHINESS_BOOTSTRAP"]) delete environment[key];
+    for (const key of ["TRUTHINESS_STORE", "TRUTHINESS_PENDING", "TRUTHINESS_COMMAND", "TRUTHINESS_TOKENIZER", "TRUTHINESS_BOOTSTRAP", "CLAUDE_CODE_ENTRYPOINT"]) delete environment[key];
+    Object.assign(environment, extra);
     const output = Bun.spawnSync([hook, event], { cwd: repo, stdin: Buffer.from(input), env: environment });
     const stderr = output.stderr.toString();
     expect(output.exitCode, `${event}: ${stderr}`).toBe(0);
@@ -31,10 +32,10 @@ function editContext(toolInput: object): string | undefined {
     return stdout ? JSON.parse(stdout).hookSpecificOutput.additionalContext : undefined;
 }
 
-function quoteNote(id: string, path: string, line: string) {
+function quoteNote(id: string, path: string, line: string, text = `${path}: ${line}`) {
     const revision = git("rev-parse", "HEAD");
     const stamp = { recorded_at: "2026-11-22T18:00:00Z", recorded_by: "agent" };
-    const claim = { id, kind: "claim", text: `${path}: ${line}`, scope: "repo", anchors: [{ path }], check: null, ...stamp };
+    const claim = { id, kind: "claim", text, scope: "repo", anchors: [{ path }], check: null, ...stamp };
     const observation = { id: `${id}-source`, kind: "observation", content: line, source_ref: `${revision}:${path}`, captured_at: stamp.recorded_at, context: { revision, source_event_id: `${id}-source`, check_session: "agent" }, ...stamp };
     const evidence = { id: `${id}-evidence`, kind: "evidence_for", from: observation.id, to: id, rationale: "Quoted line", assessment: { outcome: "supports", scope: "repo", revision }, ...stamp };
     return [claim, observation, evidence].map(record => JSON.stringify(record)).join("\n") + "\n";
@@ -78,4 +79,26 @@ test("a drafted quote note publishes and reaches the next session", () => {
     const line = "export const RETRY_LIMIT = 3;";
     expect(runHook("draft", quoteNote("retry-limit", "limits.ts", line))).toContain("1 published, 0 pending");
     expect(runHook("session-start", JSON.stringify({ cwd: repo }))).toContain(`limits.ts: ${line}`);
+});
+
+test("a prompt gets matching behavioral claims as context, not bare quotes; an unrelated prompt gets none", () => {
+    const line = "export const RETRY_LIMIT = 3;";
+    writeFileSync(join(repo, "limits.ts"), `${line}\n`);
+    git("add", "limits.ts");
+    git("commit", "--quiet", "-m", "Limit");
+    const reviewer = join(root, "reviewer");
+    writeFileSync(reviewer, "#!/usr/bin/env bun\nconst { candidates } = await Bun.stdin.json();\nconsole.log(JSON.stringify(candidates.map(candidate => candidate.id)));\n", { mode: 0o700 });
+    runHook("draft", quoteNote("retry-line", "limits.ts", line));
+    runHook("draft", quoteNote("retry-limit", "limits.ts", line, "RETRY_LIMIT allows three retries."), { TRUTHINESS_REVIEWER: reviewer });
+    const context = JSON.parse(runHook("prompt-submit", JSON.stringify({ cwd: repo, prompt: "How many retries does RETRY_LIMIT allow?" }))).hookSpecificOutput.additionalContext;
+    expect(context).toContain("RETRY_LIMIT allows three retries.");
+    expect(context).not.toContain(`limits.ts: ${line}`);
+    expect(runHook("prompt-submit", JSON.stringify({ cwd: repo, prompt: "Rename the logging helper" }))).toBe("");
+});
+
+test("a headless session start skips bootstrap unless TRUTHINESS_BOOTSTRAP=on", () => {
+    const input = JSON.stringify({ cwd: repo });
+    const headless = { CLAUDE_CODE_ENTRYPOINT: "sdk-cli" };
+    expect(runHook("session-start", input, headless)).not.toContain(`config.ts: ${source}`);
+    expect(runHook("session-start", input, { ...headless, TRUTHINESS_BOOTSTRAP: "on" })).toContain(`config.ts: ${source}`);
 });

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
 import { anchoredPathsOf, anchoredWarning, cleanSourceRevision, command, defaultProgram, defaultTokenizer, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, unknownTargetWarning } from "../../../src/agent.ts";
+import { bootstrapAllowed, recallContext } from "../../../src/session.ts";
 
 const messageType = "truthiness-index";
 const modeEntry = "truthiness-mode";
@@ -26,7 +27,8 @@ function snapshot(cwd: string, store: string, head = cleanSourceRevision(cwd)) {
 }
 
 type Entry = { type: string; customType?: string; data?: unknown; details?: unknown };
-type Session = { cwd: string; sessionManager: { getBranch(): Entry[] } };
+type Session = { cwd: string; hasUI: boolean; sessionManager: { getBranch(): Entry[] } };
+type AgentStart = { prompt: string; systemPrompt: string[] };
 type Message = { role: string; customType?: string; details?: unknown };
 type HookAPI = Pick<ExtensionAPI, "appendEntry" | "on" | "registerCommand" | "registerTool" | "zod"> & {
     logger: Pick<ExtensionAPI["logger"], "warn">;
@@ -45,7 +47,7 @@ export default function truthinessHook(pi: HookAPI): void {
     pi.on("session_tree", async (_event, ctx) => restoreMode(hook, ctx));
     pi.on("session_compact", async (_event, ctx) => restoreMode(hook, ctx));
     registerDraftTool(hook);
-    pi.on("before_agent_start", async (_event, ctx) => startupIndex(hook, ctx));
+    pi.on("before_agent_start", async (event, ctx) => agentStart(hook, event, ctx));
     pi.on("context", async (event, ctx) => ({ messages: currentIndexOnly(hook, event.messages, ctx.cwd) }));
     pi.on("tool_call", async (event, ctx) => editWarning(hook, event, ctx.cwd));
 }
@@ -95,12 +97,29 @@ function registerDraftTool(hook: Hook) {
     });
 }
 
+async function agentStart(hook: Hook, event: AgentStart, ctx: Session) {
+    const index = await startupIndex(hook, ctx);
+    const systemPrompt = recallPrompt(hook, event, ctx.cwd);
+    if (!systemPrompt) return index;
+    return { ...index, systemPrompt };
+}
+
+function recallPrompt(hook: Hook, event: AgentStart, cwd: string): string[] | undefined {
+    if (!hook.enabled || !event.prompt) return undefined;
+    const { store } = memoryPaths(cwd);
+    const head = cleanSourceRevision(cwd);
+    if (!store || !head || !existsSync(resolve(cwd, store))) return undefined;
+    const context = recallContext(hook.program, store, head, hook.tokenizer, cwd, event.prompt);
+    return context ? [...event.systemPrompt, context] : undefined;
+}
+
 async function startupIndex(hook: Hook, ctx: Session) {
     if (!hook.enabled) return;
     const { store } = memoryPaths(ctx.cwd);
     const head = cleanSourceRevision(ctx.cwd);
     if (!store || !head) return;
-    if (process.env.TRUTHINESS_BOOTSTRAP !== "off") {
+    // Only an explicit hasUI=false (print/RPC mode) is headless; a missing flag is not.
+    if (bootstrapAllowed(ctx.hasUI === false)) {
         const bootstrap = runWorker(hook.program, ["bootstrap", store], { cwd: ctx.cwd, timeout: 15_000 });
         await bootstrap.catch(() => hook.pi.logger.warn("Truthiness could not bootstrap project memory."));
     }

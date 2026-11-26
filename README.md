@@ -55,7 +55,8 @@ Add to `~/.claude/settings.json`:
 {
   "hooks": {
     "SessionStart": [{ "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts session-start" }] }],
-    "PostToolUse": [{ "matcher": "Edit|MultiEdit|Write|NotebookEdit", "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts post-edit" }] }]
+    "PostToolUse": [{ "matcher": "Edit|MultiEdit|Write|NotebookEdit", "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts post-edit" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts prompt-submit" }] }]
   }
 }
 ```
@@ -68,7 +69,8 @@ Add to `~/.codex/hooks.json`:
 {
   "hooks": {
     "SessionStart": [{ "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts session-start" }] }],
-    "PostToolUse": [{ "matcher": "apply_patch", "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts post-edit" }] }]
+    "PostToolUse": [{ "matcher": "apply_patch", "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts post-edit" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/path/to/truthiness/src/hook.ts prompt-submit" }] }]
   }
 }
 ```
@@ -86,7 +88,7 @@ Commit `.truthiness/canonical.jsonl` with your code. Recheck results go to `cano
 | `TRUTHINESS_PENDING` | `truthiness/pending` in the Git directory |
 | `TRUTHINESS_COMMAND` | [`src/cli.ts`](src/cli.ts) |
 | `TRUTHINESS_TOKENIZER` | [`scripts/truthiness-tokenizer.sh`](scripts/truthiness-tokenizer.sh) |
-| `TRUTHINESS_BOOTSTRAP` | On; `off` skips seeding and rechecking the store at startup |
+| `TRUTHINESS_BOOTSTRAP` | On. `off` skips seeding and rechecking the store at startup. Headless sessions skip it unless set to `on` |
 
 </details>
 
@@ -157,7 +159,7 @@ export TRUTHINESS_REVIEW_COMMAND=llm
 | `truthiness bootstrap STORE` | Seed and recheck notes against the latest source commit. Paths with the `truthiness` attribute unset in `.gitattributes` (`bench/** -truthiness`) are not seeded. |
 | `truthiness index STORE SCOPE REVISION TOKENIZER` | Print the startup index, with a count of stale notes it hides. Use `""` for an unscoped index. |
 | `truthiness stale STORE SCOPE REVISION` | Print a refresh draft for the first stale note. Edit its quoted line, then stage it. Prints nothing when none is stale. |
-| `truthiness query STORE TOKENIZER` | Look up notes via a JSON request on stdin (`id`, `sparse`, `flat` or `graph`). |
+| `truthiness query STORE TOKENIZER` | Look up notes via a JSON request on stdin (`id`, `sparse`, `flat` or `graph`). `explain: true` adds `score` and `terms` to sparse matches. |
 | `truthiness anchors STORE` | List files quoted by valid notes. Re-read them before editing. |
 | `truthiness stage PENDING_FILE` | Stage a JSONL draft from stdin. |
 | `truthiness review-pending STORE PENDING_FILE` | Publish supported drafts and return reason codes for the rest. |
