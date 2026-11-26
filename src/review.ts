@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { containsDetectableSecret, parseProposal, type Graph } from "./store.ts";
+import { containsDetectableSecret, parseProposal, privateKeyBegin, type Graph } from "./store.ts";
 
 type RecordLine = Graph[string];
 type Source = (path: string) => string | undefined;
@@ -285,9 +285,25 @@ function windowedSource(path: string, text: string, excerpts: Excerpt[]): string
         ranges.push([Math.max(0, first - windowContextLines), Math.min(lines.length - 1, last + windowContextLines)]);
     }
     if (!ranges.length) return undefined;
-    const windows = mergeRanges(ranges).map(([start, end]) => ({ firstLine: start + 1, text: lines.slice(start, end + 1).join("\n") }));
+    const merged = mergeRanges(ranges);
+    const spans = secretLineSpans(lines);
+    if (merged.some(([start, end]) => spans.some(([first, last]) => first <= end && last >= start))) return undefined;
+    const windows = merged.map(([start, end]) => ({ firstLine: start + 1, text: lines.slice(start, end + 1).join("\n") }));
     if (windows.some(window => containsDetectableSecret(window.text))) return undefined;
     return JSON.stringify({ path, totalLines: lines.length, windows });
+}
+
+const privateKeyEnd = /-----END [A-Z0-9 ]*PRIVATE KEY-----/;
+
+// A window edge can cut a key block below its BEGIN line, so a key spans every line to its END.
+function secretLineSpans(lines: string[]): [number, number][] {
+    const spans: [number, number][] = [];
+    for (const [index, line] of lines.entries()) {
+        if (!containsDetectableSecret(line)) continue;
+        const keyEnd = privateKeyBegin.test(line) ? lines.findIndex((candidate, at) => at > index && privateKeyEnd.test(candidate)) : index;
+        spans.push([index, keyEnd < 0 ? lines.length - 1 : keyEnd]);
+    }
+    return spans;
 }
 
 function mergeRanges(ranges: [number, number][]): [number, number][] {

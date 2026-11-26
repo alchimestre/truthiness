@@ -171,6 +171,7 @@ test("an oversized source is reviewed when its secret lies outside the windows, 
     for (const [label, source, published] of [
         ["outside", `${secret}\n${padding}${excerpt}\n${padding}`, 1],
         ["inside", `${padding}${secret}\n${excerpt}\n${padding}`, 0],
+        ["straddling", `${padding}-----BEGIN ENCRYPTED PRIVATE KEY-----\n${"MIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n".repeat(80)}-----END ENCRYPTED PRIVATE KEY-----\n${excerpt}\n${padding}`, 0],
     ] as const) {
         fixture((cwd, revision) => {
             const path = join(cwd, "pending.jsonl");

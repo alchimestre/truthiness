@@ -172,8 +172,10 @@ function decodeRecords(data: Buffer): Graph {
     return graph;
 }
 
+export const privateKeyBegin = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
+
 const knownSecretFormats = [
-    /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
+    privateKeyBegin,
     /\bAKIA[0-9A-Z]{16}\b/,
     /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
     /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/,
