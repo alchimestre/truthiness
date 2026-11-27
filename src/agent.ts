@@ -146,6 +146,7 @@ export async function stageAndReview(program: string, cwd: string, store: string
 export const outcomeSuffix = ".outcome.json";
 const pidSuffix = ".reviewer.pid";
 const errorLogSuffix = ".reviewer.log";
+export const rejectedSuffix = ".rejected";
 export const recheckLogFile = "recheck.reviewer.log";
 
 export function reviewInBackground(program: string[], cwd: string, store: string, path: string) {
@@ -177,6 +178,7 @@ export function backgroundReviewNotice(cwd: string, pendingDirectory: string): s
                 if (reason === "semantic_review_rejected") rejected.push(JSON.stringify(id));
                 if (reason === "semantic_review_required") unresolved.push(JSON.stringify(id));
             }
+            if (reasons.some(({ reason }) => reason === "semantic_review_rejected")) writeFileSync(`${batchPath}${rejectedSuffix}`, "");
         } else if (!reviewMayBeRunning(path, `${batchPath}${pidSuffix}`)) {
             crashed.push(...stagedClaimIDs(batchPath));
         } else continue;

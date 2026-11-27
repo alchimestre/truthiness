@@ -4,7 +4,7 @@ import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { appendFile, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { outcomeSuffix, recheckLogFile, reviewInBackground, sourceRevision } from "./agent.ts";
+import { outcomeSuffix, recheckLogFile, rejectedSuffix, reviewInBackground, sourceRevision } from "./agent.ts";
 import { bootstrap, checkedAt, readBlob, readBlobsAt } from "./bootstrap.ts";
 import { claimRecordIDs, load, parseProposal, publish, publishAuthorized, publishRechecks, stage, unstage, type Graph } from "./store.ts";
 import { estimateTokens, index, notesByPath, query, staleDraft } from "./lookup.ts";
@@ -100,7 +100,7 @@ async function reviewCommittedDrafts(store: string, pendingDirectory: string, di
     const names = await readdir(pendingDirectory).catch(() => [] as string[]);
     for (const name of names.filter(entry => entry.endsWith(".jsonl"))) {
         const path = join(pendingDirectory, name);
-        if (existsSync(`${path}${outcomeSuffix}`)) continue;
+        if (existsSync(`${path}${outcomeSuffix}`) || existsSync(`${path}${rejectedSuffix}`)) continue;
         const refreshed = await readFile(path, "utf8").then(batch => draftAtHead(batch, directory, revision)).catch(() => undefined);
         if (!refreshed) continue;
         await writeFile(path, refreshed);

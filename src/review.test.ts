@@ -485,6 +485,30 @@ test("bootstrap reviews a draft again after an unrelated commit moves HEAD", () 
     });
 });
 
+test("a draft the reviewer rejected is not reviewed again after the next commit", () => {
+    fixture((cwd, revision) => {
+        const pending = join(cwd, "pending");
+        const reviewer = join(cwd, "reviewer");
+        writeFileSync(reviewer, "#!/usr/bin/env bun\nawait Bun.stdin.json();\nconsole.log(\"[]\");\n", { mode: 0o700 });
+        mkdirSync(pending);
+        const draft = join(pending, "draft.jsonl");
+        writeFileSync(draft, batch(revision, "wrong", "`parse` uppercases its argument.", excerpt));
+        const bootstrapAfterCommit = (file: string) => {
+            writeFileSync(join(cwd, file), "unrelated\n");
+            git(cwd, "add", file);
+            git(cwd, "commit", "-qm", file);
+            expect(Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl", pending], { cwd, env: { ...process.env, TRUTHINESS_REVIEWER: reviewer } }).exitCode).toBe(0);
+        };
+        bootstrapAfterCommit("first.txt");
+        const outcome = `${draft}.outcome.json`;
+        const deadline = Date.now() + backgroundRecheckWaitMs;
+        while (!(existsSync(outcome) && readFileSync(outcome, "utf8")) && Date.now() < deadline) Bun.sleepSync(pollMs);
+        expect(backgroundReviewNotice(cwd, pending)).toContain("rejected");
+        bootstrapAfterCommit("second.txt");
+        expect(existsSync(outcome)).toBe(false);
+    });
+});
+
 test("a failing background reviewer is named in the next session notice", () => {
     fixture((cwd, revision) => {
         const pending = join(cwd, "pending");
