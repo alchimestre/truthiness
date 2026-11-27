@@ -72,14 +72,15 @@ test("keeps the default store inside each repository and stays silent outside on
         const session = (cwd: string) => ({ cwd, sessionManager: { getBranch: () => [] } });
         for (const [position, repo] of repos.entries()) {
             const startup = await handlers.get("before_agent_start")({}, session(repo));
-            expect(startup.message.content).toContain(`# Guide ${position}`);
-            expect(startup.message.content).not.toContain(`# Guide ${1 - position}`);
+            expect(startup.message.content).toContain("No notes about behaviour yet");
+            const seeded = readFileSync(join(repo, ".truthiness", "canonical.jsonl"), "utf8");
+            expect(seeded).toContain(`# Guide ${position}`);
+            expect(seeded).not.toContain(`# Guide ${1 - position}`);
         }
-        for (const repo of repos) expect(existsSync(join(repo, ".truthiness", "canonical.jsonl"))).toBe(true);
         git(repos[0], "add", ".truthiness");
         git(repos[0], "commit", "-m", "Store");
         const afterStoreCommit = await handlers.get("before_agent_start")({}, session(repos[0]));
-        expect(afterStoreCommit.message.content).toContain("# Guide 0");
+        expect(afterStoreCommit.message.content).toContain("Truthiness startup index");
         expect(git(repos[0], "status", "--porcelain")).toBe("");
         const outside = join(root, "plain");
         mkdirSync(outside);
@@ -109,8 +110,9 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
         logger: { warn: (message: string) => { warnings.push(message); } },
     });
     const startup = await handlers.get("before_agent_start")({}, ctx);
-    expect(startup.message.content).toContain("README.md: # Parser guide");
+    expect(startup.message.content).toContain("No notes about behaviour yet");
     const seeded = readFileSync(store, "utf8");
+    expect(seeded).toContain("README.md: # Parser guide");
     branch.push({ type: "custom_message", ...startup.message });
     expect(await handlers.get("before_agent_start")({}, ctx)).toBeUndefined();
     const message = { role: "custom", ...startup.message };
@@ -140,7 +142,12 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
     expect(await submit(verified)).toBe("0 published, 0 pending automatic or operator review.");
     expect(readdirSync(state).filter(file => file.endsWith(".jsonl"))).toHaveLength(2);
     const edit = (path: string) => handlers.get("tool_call")({ toolName: "edit", input: { path } }, ctx);
-    expect(await edit("source.py")).toEqual({ additionalContext: expect.stringContaining("notes quote source.py") });
+    expect(await edit("source.py")).toBeUndefined();
+    const behaviour = join(repo, "..", `${repo.split("/").at(-1)}-behaviour.jsonl`);
+    writeFileSync(behaviour, verified.replace("source.py: def handler(request):", "handler returns its request unchanged.").replaceAll("-1", "-2"));
+    expect(Bun.spawnSync([executable, "pending-approve", store, behaviour, "claim-2"], { cwd: repo }).exitCode).toBe(0);
+    rmSync(behaviour);
+    expect(await edit("source.py")).toEqual({ additionalContext: expect.stringContaining("source.py: handler returns its request unchanged.") });
     expect(await edit(join(repo, "unquoted.py"))).toBeUndefined();
     expect(warnings).toEqual([]);
     await expectRecheckAcrossCommits(repo, store);
@@ -173,11 +180,11 @@ async function expectRecheckAcrossCommits(repo: string, store: string) {
     git(repo, "add", "LATER.md");
     git(repo, "commit", "-m", "Unrelated");
     const afterUnrelated = startupIndex();
-    expect(afterUnrelated).toContain('"id":"claim-1"');
-    expect(afterUnrelated.split("Added after the first bootstrap")).toHaveLength(2);
+    expect(afterUnrelated).toContain('"id":"claim-2"');
+    expect(readFileSync(store, "utf8").split('"text":"LATER.md: # Added after the first bootstrap"')).toHaveLength(2);
     expect(startupIndex()).toBe(afterUnrelated);
     writeFileSync(join(repo, "source.py"), "def renamed(request):\n    return request\n");
     git(repo, "add", "source.py");
     git(repo, "commit", "-m", "Rename");
-    expect(startupIndex()).not.toContain('"id":"claim-1"');
+    expect(startupIndex()).not.toContain('"id":"claim-2"');
 }

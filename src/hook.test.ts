@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const hook = fileURLToPath(new URL("./hook.ts", import.meta.url));
+const cli = fileURLToPath(new URL("./cli.ts", import.meta.url));
 const source = "export function parseConfig(text: string) { return text; }";
 let root: string;
 let repo: string;
@@ -56,7 +57,8 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 test("session start injects the index and draft instructions only on a clean tree", () => {
     const startup = runHook("session-start", JSON.stringify({ cwd: repo, source: "startup" }));
-    expect(startup).toContain(`config.ts: ${source}`);
+    expect(startup).toContain("No notes about behaviour yet");
+    expect(startup).not.toContain(`config.ts: ${source}`);
     expect(startup).toContain(`${hook} draft`);
     expect(startup).toContain("Writing notes");
 
@@ -64,21 +66,23 @@ test("session start injects the index and draft instructions only on a clean tre
     expect(runHook("session-start", JSON.stringify({ cwd: repo }))).toBe("");
 });
 
-test("edits warn only for quoted files, from Claude Code paths and Codex patches", () => {
+test("edits show the edited file's behaviour notes, from Claude Code paths and Codex patches, not seeded quotes", () => {
     runHook("session-start", JSON.stringify({ cwd: repo }));
-    expect(editContext({ file_path: join(repo, "config.ts"), old_string: "a", new_string: "b" })).toContain("quote config.ts");
-    expect(editContext({ command: "*** Begin Patch\n*** Update File: config.ts\n@@\n-a\n+b\n*** End Patch\n" })).toContain("quote config.ts");
+    expect(editContext({ file_path: join(repo, "config.ts"), old_string: "a", new_string: "b" })).toBeUndefined();
+    approveNote(quoteNote("parse-identity", "config.ts", source, "parseConfig returns its input unchanged."));
+    expect(editContext({ file_path: join(repo, "config.ts"), old_string: "a", new_string: "b" })).toContain("config.ts: parseConfig returns its input unchanged.");
+    expect(editContext({ command: "*** Begin Patch\n*** Update File: config.ts\n@@\n-a\n+b\n*** End Patch\n" })).toContain("parseConfig returns its input unchanged.");
     expect(editContext({ file_path: join(repo, "notes.txt"), content: "x" })).toBeUndefined();
     expect(editContext({})).toContain("may quote the file");
 });
 
-test("a drafted quote note publishes and reaches the next session", () => {
+test("a drafted quote note publishes and stays out of the startup index", () => {
     writeFileSync(join(repo, "limits.ts"), "export const RETRY_LIMIT = 3;\n");
     git("add", "limits.ts");
     git("commit", "--quiet", "-m", "Limit");
     const line = "export const RETRY_LIMIT = 3;";
     expect(runHook("draft", quoteNote("retry-limit", "limits.ts", line))).toContain("1 published, 0 pending");
-    expect(runHook("session-start", JSON.stringify({ cwd: repo }))).toContain(`limits.ts: ${line}`);
+    expect(runHook("session-start", JSON.stringify({ cwd: repo }))).not.toContain(`limits.ts: ${line}`);
 });
 
 test("a prompt gets matching behavioral claims as context, not bare quotes; an unrelated prompt gets none", () => {
@@ -176,6 +180,18 @@ function waitUntil(done: () => boolean, label: string) {
 test("a headless session start skips bootstrap unless TRUTHINESS_BOOTSTRAP=on", () => {
     const input = JSON.stringify({ cwd: repo });
     const headless = { CLAUDE_CODE_ENTRYPOINT: "sdk-cli" };
-    expect(runHook("session-start", input, headless)).not.toContain(`config.ts: ${source}`);
-    expect(runHook("session-start", input, { ...headless, TRUTHINESS_BOOTSTRAP: "on" })).toContain(`config.ts: ${source}`);
+    const store = join(repo, ".truthiness", "canonical.jsonl");
+    const seeded = () => existsSync(store) && readFileSync(store, "utf8").includes(`config.ts: ${source}`);
+    runHook("session-start", input, headless);
+    expect(seeded()).toBe(false);
+    runHook("session-start", input, { ...headless, TRUTHINESS_BOOTSTRAP: "on" });
+    expect(seeded()).toBe(true);
 });
+
+function approveNote(jsonl: string) {
+    const pending = join(root, "approve.jsonl");
+    writeFileSync(pending, jsonl);
+    const id = JSON.parse(jsonl.split("\n")[0]).id;
+    const result = Bun.spawnSync(["bun", cli, "pending-approve", join(repo, ".truthiness", "canonical.jsonl"), pending, id], { cwd: repo });
+    expect(result.stderr.toString()).toBe("");
+}

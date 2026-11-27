@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { anchoredPaths, estimateTokens, index, query, staleClaims, staleDraft, type Records, type Request } from "./lookup.ts";
+import { estimateTokens, index, notesByPath, query, staleClaims, staleDraft, type Records, type Request } from "./lookup.ts";
 import { parseProposal } from "./store.ts";
 
 function records(outcome = "supports", scope = "service A", revision = "abc"): Records {
@@ -133,29 +133,19 @@ describe("lookup index", () => {
     expect(estimateTokens(output)).toBeLessThanOrEqual(1200);
   });
 
-  test("lists agent claims before bare-quote landmarks even when the landmark id sorts first", () => {
+  test("leaves bare-quote landmarks out and says so when no behaviour note is left", () => {
     const data = records();
     data["a-landmark"] = { id: "a-landmark", kind: "claim", text: "src/a.ts: const x = 1;", scope: "service A", anchors: [{ path: "src/a.ts" }] };
     data["a-observation"] = { id: "a-observation", kind: "observation", content: "const x = 1;\n", context: { source_event_id: "event-3", revision: "abc" } };
     data["a-evidence"] = { id: "a-evidence", kind: "evidence_for", from: "a-observation", to: "a-landmark", assessment: { outcome: "supports", scope: "service A", revision: "abc" } };
-    const ids = index(data, "service A", "abc", (value) => value.length).split("\n").filter((line) => line.startsWith("{")).map((line) => JSON.parse(line).id);
-    expect(ids).toEqual(["claim", "a-landmark"]);
-  });
-
-  test("orders landmarks by README heading, export, other code, test, one per file before any second", () => {
-    const data = records();
-    const landmark = (id: string, path: string, line: string) => {
-      data[id] = { id, kind: "claim", text: `${path}: ${line}`, scope: "service A", anchors: [{ path }] };
-      data[`${id}-observation`] = { id: `${id}-observation`, kind: "observation", content: `${line}\n`, context: { source_event_id: `${id}-event`, revision: "abc" } };
-      data[`${id}-evidence`] = { id: `${id}-evidence`, kind: "evidence_for", from: `${id}-observation`, to: id, assessment: { outcome: "supports", scope: "service A", revision: "abc" } };
-    };
-    landmark("a", "src/a.test.ts", "test(\"x\", () => {");
-    landmark("b", "src/b.ts", "function helper() {");
-    landmark("c", "src/b.ts", "export function main() {");
-    landmark("d", "src/c.ts", "export const limit = 3;");
-    landmark("e", "README.md", "## Install");
-    const ids = index(data, "service A", "abc", (value) => value.length).split("\n").filter((line) => line.startsWith("{")).map((line) => JSON.parse(line).id);
-    expect(ids).toEqual(["claim", "e", "c", "d", "a", "b"]);
+    const ids = (output: string) => output.split("\n").filter((line) => line.startsWith("{")).map((line) => JSON.parse(line).id);
+    const output = index(data, "service A", "abc", (value) => value.length);
+    expect(ids(output)).toEqual(["claim"]);
+    expect(output).not.toContain("No notes about behaviour yet");
+    delete data.claim;
+    const empty = index(data, "service A", "abc", (value) => value.length);
+    expect(ids(empty)).toEqual([]);
+    expect(empty).toContain("No notes about behaviour yet");
   });
 });
 
@@ -199,18 +189,16 @@ describe("stale notes", () => {
   });
 });
 
-describe("anchored paths", () => {
-  test("lists paths of live claims only", () => {
-    const claim = (path: string) => ({ kind: "claim", anchors: [{ path }] });
-    const data: Records = {
-      live: claim("src/review.ts"),
-      superseded: claim("src/old.ts"),
-      disproved: claim("src/wrong.ts"),
-      axiom: { kind: "axiom", anchors: [{ path: "src/axiom.ts" }] },
-      replacement: { kind: "supersedes", from: "live", to: "superseded" },
-      refutation: { kind: "evidence_for", to: "disproved", assessment: { outcome: "disproves" } },
-    };
-    expect([...anchoredPaths(data)]).toEqual(["src/review.ts"]);
-    expect(anchoredPaths({}).size).toBe(0);
+describe("notes by path", () => {
+  test("lists live behaviour notes per anchored file, not bare quotes, retired or unverified claims", () => {
+    const data = records();
+    data.claim.anchors = [{ path: "src/cache.ts" }];
+    data.quote = { ...data.claim, id: "quote", text: "src/cache.ts: const ttl = 60;" };
+    data.quoteObservation = { ...data.observation, id: "quoteObservation", content: "const ttl = 60;" };
+    data.quoteEvidence = { ...data.evidence, id: "quoteEvidence", from: "quoteObservation", to: "quote" };
+    data.unverified = { ...data.claim, id: "unverified", text: "Never checked." };
+    expect(notesByPath(data, "abc")).toEqual(new Map([["src/cache.ts", ["Cache responses"]]]));
+    data.refutation = { id: "refutation", kind: "evidence_for", from: "observation", to: "claim", assessment: { outcome: "disproves", scope: "service A", revision: "abc" } };
+    expect(notesByPath(data, "abc").size).toBe(0);
   });
 });

@@ -2,7 +2,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { anchoredPathsOf, anchoredWarning, backgroundReviewNotice, cleanSourceRevision, command, commitNudge, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "./agent.ts";
+import { anchoredWarning, backgroundReviewNotice, cleanSourceRevision, command, commitNudge, defaultProgram, memoryPaths, noteFormatHelp, notesFor, notesOf, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "./agent.ts";
 import { bootstrapAllowed, claudeHeadless, recallContext } from "./session.ts";
 
 type HookInput = { cwd?: unknown; tool_input?: unknown; prompt?: unknown };
@@ -54,9 +54,9 @@ async function postEdit({ cwd, toolInput }: { cwd: string; toolInput: unknown })
     const { root, store } = memoryPaths(cwd);
     if (!store || !existsSync(resolve(cwd, store))) return;
     const edited = root ? repositoryRelative(editTargets(toolInput), cwd, root) : [];
-    const anchored = edited.length ? await anchoredPathsOf(program, resolve(cwd, store), cwd) : undefined;
-    const quoted = anchored ? edited.filter(path => anchored.has(path)) : [];
-    const context = anchored ? (quoted.length ? anchoredWarning(quoted) : undefined) : unknownTargetWarning;
+    const notes = edited.length ? await notesOf(program, resolve(cwd, store), cwd) : undefined;
+    const relevant = notes ? notesFor(notes, edited) : new Map<string, string[]>();
+    const context = notes ? (relevant.size ? anchoredWarning(relevant) : undefined) : unknownTargetWarning;
     if (context) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: context } }));
 }
 

@@ -163,10 +163,10 @@ export TRUTHINESS_REVIEW_COMMAND="omp -p --no-tools --no-skills --no-rules --no-
 | --- | --- |
 | `truthiness bootstrap STORE` | Seed and recheck notes against the latest source commit. Paths with the `truthiness` attribute unset in `.gitattributes` (`bench/** -truthiness`) are not seeded. Rechecks that need the reviewer run in a background `recheck-review`. |
 | `truthiness recheck-review STORE` | Recheck notes with `TRUTHINESS_REVIEWER`. Bootstrap starts it in the background. |
-| `truthiness index STORE SCOPE REVISION [TOKENIZER]` | Print the startup index, with a count of stale notes it hides. Use `""` for an unscoped index. Agent notes come first; seeded `path: line` notes follow one per file before any second, ranked README heading, exported symbol, other code, test. |
+| `truthiness index STORE SCOPE REVISION [TOKENIZER]` | Print the startup index of notes about behaviour, with a count of stale notes it hides. Use `""` for an unscoped index. Seeded `path: line` notes are left out; lookup still finds them. With no behaviour notes, it asks the agent to propose some. |
 | `truthiness stale STORE SCOPE REVISION` | Print a refresh draft for the first stale note. Edit its quoted line, then stage it. Prints nothing when none is stale. |
 | `truthiness query STORE [TOKENIZER]` | Look up notes via a JSON request on stdin (`id`, `sparse`, `flat` or `graph`). `explain: true` adds `score` and `terms` to sparse matches. |
-| `truthiness anchors STORE` | List files quoted by valid notes. Re-read them before editing. |
+| `truthiness anchors STORE REVISION` | Print the behaviour notes valid at `REVISION`, grouped by the file they quote. The edit hooks show up to 5 of them when an edit touches that file. |
 | `truthiness stage PENDING_FILE` | Stage a JSONL draft from stdin. |
 | `truthiness review-pending STORE PENDING_FILE` | Publish supported drafts and return reason codes for the rest. |
 | `truthiness validate STORE` | Check the store for errors. |

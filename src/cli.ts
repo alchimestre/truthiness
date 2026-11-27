@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { sourceRevision } from "./agent.ts";
 import { bootstrap, checkedAt, readBlob, readBlobsAt } from "./bootstrap.ts";
 import { claimRecordIDs, load, parseProposal, publish, publishAuthorized, publishRechecks, stage, unstage, type Graph } from "./store.ts";
-import { anchoredPaths, estimateTokens, index, query, staleDraft } from "./lookup.ts";
+import { estimateTokens, index, notesByPath, query, staleDraft } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
 import { digest, recheckBatch, review, reviewRechecks, type PendingReason } from "./review.ts";
 
@@ -13,7 +13,7 @@ const maxProposalBytes = 16 * 1024 * 1024;
 
 async function run(args: string[]) {
     const [command, path, ...options] = args;
-    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE [TOKENIZER] | index STORE SCOPE REVISION [TOKENIZER] | stale STORE SCOPE REVISION | anchors STORE | stage PENDING | bootstrap STORE | recheck-review STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE | pending STORE PENDING_FILE | pending-approve STORE PENDING_FILE CLAIM_ID | pending-decline STORE PENDING_FILE CLAIM_ID");
+    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE [TOKENIZER] | index STORE SCOPE REVISION [TOKENIZER] | stale STORE SCOPE REVISION | anchors STORE REVISION | stage PENDING | bootstrap STORE | recheck-review STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE | pending STORE PENDING_FILE | pending-approve STORE PENDING_FILE CLAIM_ID | pending-decline STORE PENDING_FILE CLAIM_ID");
     switch (command) {
         case "validate":
             requireOptions(options, 0);
@@ -45,8 +45,8 @@ async function run(args: string[]) {
             await stage(path, await readInput());
             return;
         case "anchors":
-            requireOptions(options, 0);
-            console.log(JSON.stringify({ paths: [...anchoredPaths(await load(path))].sort() }));
+            requireOptions(options, 1);
+            console.log(JSON.stringify({ notes: Object.fromEntries(notesByPath(await load(path), options[0])) }));
             return;
         case "bootstrap":
             requireOptions(options, 0);

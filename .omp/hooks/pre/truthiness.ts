@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { anchoredPathsOf, anchoredWarning, backgroundReviewNotice, cleanSourceRevision, command, commitNudge, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "../../../src/agent.ts";
+import { anchoredWarning, backgroundReviewNotice, cleanSourceRevision, command, commitNudge, defaultProgram, memoryPaths, noteFormatHelp, notesFor, notesOf, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "../../../src/agent.ts";
 import { bootstrapAllowed, recallContext } from "../../../src/session.ts";
 
 const messageType = "truthiness-index";
@@ -167,11 +167,11 @@ async function editWarning(hook: Hook, event: ToolCallEvent, cwd: string) {
     if (!store || !existsSync(resolve(cwd, store))) return;
     const edited = root ? editedPaths(event.input, cwd, root) : [];
     if (edited.length === 0) return { additionalContext: unknownTargetWarning };
-    const anchored = await anchoredPathsOf(hook.program, resolve(cwd, store), cwd);
-    if (!anchored) {
+    const notes = await notesOf(hook.program, resolve(cwd, store), cwd);
+    if (!notes) {
         hook.pi.logger.warn("Truthiness could not read note anchors; warned on this edit.");
         return { additionalContext: unknownTargetWarning };
     }
-    const quoted = edited.filter(path => anchored.has(path));
-    if (quoted.length) return { additionalContext: anchoredWarning(quoted) };
+    const relevant = notesFor(notes, edited);
+    if (relevant.size) return { additionalContext: anchoredWarning(relevant) };
 }
