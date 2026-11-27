@@ -101,7 +101,7 @@ async function reviewCommittedDrafts(store: string, pendingDirectory: string, di
     for (const name of names.filter(entry => entry.endsWith(".jsonl"))) {
         const path = join(pendingDirectory, name);
         if (existsSync(`${path}${outcomeSuffix}`)) continue;
-        const refreshed = await readFile(path, "utf8").then(batch => draftCommittedSince(batch, directory, revision)).catch(() => undefined);
+        const refreshed = await readFile(path, "utf8").then(batch => draftAtHead(batch, directory, revision)).catch(() => undefined);
         if (!refreshed) continue;
         await writeFile(path, refreshed);
         reviewInBackground([process.execPath, import.meta.path], directory, store, path);
@@ -110,12 +110,12 @@ async function reviewCommittedDrafts(store: string, pendingDirectory: string, di
 
 type DraftRecord = { kind: string; content?: string; source_ref?: string; context?: object; assessment?: object };
 
-function draftCommittedSince(batch: string, directory: string, revision: string): string | undefined {
+function draftAtHead(batch: string, directory: string, revision: string): string | undefined {
     const records = batch.split("\n").filter(Boolean).map(line => JSON.parse(line) as DraftRecord);
     const quotes = records.filter(record => record.kind === "observation").map(record => ({ content: String(record.content), ...splitRef(String(record.source_ref)) }));
-    const draftedUncommitted = quotes.some(({ content, at, path }) => at !== revision && !readBlob(directory, at, path)?.includes(content));
-    const committedNow = quotes.length > 0 && quotes.every(({ content, path }) => readBlob(directory, revision, path)?.includes(content));
-    if (!draftedUncommitted || !committedNow) return undefined;
+    const behindHead = quotes.some(({ at }) => at !== revision);
+    const matchesHead = quotes.length > 0 && quotes.every(({ content, path }) => readBlob(directory, revision, path)?.includes(content));
+    if (!behindHead || !matchesHead) return undefined;
     return records.map(record => JSON.stringify(atRevision(record, revision))).join("\n") + "\n";
 }
 

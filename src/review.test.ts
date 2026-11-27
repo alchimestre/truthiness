@@ -467,6 +467,24 @@ test("bootstrap reviews a draft once the code it quotes is committed", () => {
     });
 });
 
+test("bootstrap reviews a draft again after an unrelated commit moves HEAD", () => {
+    fixture((cwd, revision) => {
+        const pending = join(cwd, "pending");
+        const reviewer = join(cwd, "reviewer");
+        writeFileSync(reviewer, "#!/usr/bin/env bun\nconst { candidates } = await Bun.stdin.json();\nconsole.log(JSON.stringify(candidates.map(candidate => candidate.id)));\n", { mode: 0o700 });
+        mkdirSync(pending);
+        writeFileSync(join(pending, "draft.jsonl"), batch(revision, "same", "`parse` returns its argument.", excerpt));
+        writeFileSync(join(cwd, "other.txt"), "unrelated\n");
+        git(cwd, "add", "other.txt");
+        git(cwd, "commit", "-qm", "Unrelated");
+        expect(Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl", pending], { cwd, env: { ...process.env, TRUTHINESS_REVIEWER: reviewer } }).exitCode).toBe(0);
+        const store = join(cwd, "canonical.jsonl");
+        const deadline = Date.now() + backgroundRecheckWaitMs;
+        while (!(existsSync(store) && readFileSync(store, "utf8").includes('"id":"same"')) && Date.now() < deadline) Bun.sleepSync(pollMs);
+        expect(readFileSync(store, "utf8")).toContain('"id":"same"');
+    });
+});
+
 test("a failing background reviewer is named in the next session notice", () => {
     fixture((cwd, revision) => {
         const pending = join(cwd, "pending");
