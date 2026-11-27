@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { spawn } from "node:child_process";
 import { appendFile, readFile, unlink } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { sourceRevision } from "./agent.ts";
@@ -12,7 +13,7 @@ const maxProposalBytes = 16 * 1024 * 1024;
 
 async function run(args: string[]) {
     const [command, path, ...options] = args;
-    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE [TOKENIZER] | index STORE SCOPE REVISION [TOKENIZER] | stale STORE SCOPE REVISION | anchors STORE | stage PENDING | bootstrap STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE | pending STORE PENDING_FILE | pending-approve STORE PENDING_FILE CLAIM_ID | pending-decline STORE PENDING_FILE CLAIM_ID");
+    if (!path) throw new Error("usage: truthiness validate STORE | axioms STORE SCOPE | query STORE [TOKENIZER] | index STORE SCOPE REVISION [TOKENIZER] | stale STORE SCOPE REVISION | anchors STORE | stage PENDING | bootstrap STORE | recheck-review STORE | review-pending STORE PENDING | publish STORE DIGEST | publish-authorized STORE APPROVAL_FILE | pending STORE PENDING_FILE | pending-approve STORE PENDING_FILE CLAIM_ID | pending-decline STORE PENDING_FILE CLAIM_ID");
     switch (command) {
         case "validate":
             requireOptions(options, 0);
@@ -51,6 +52,10 @@ async function run(args: string[]) {
             requireOptions(options, 0);
             await bootstrapStore(path, process.cwd());
             return;
+        case "recheck-review":
+            requireOptions(options, 0);
+            await recheckStore(path, process.cwd(), head(process.cwd()), process.env.TRUTHINESS_REVIEWER);
+            return;
         case "review-pending":
             requireOptions(options, 1);
             await reviewPending(path, options[0], process.cwd());
@@ -84,7 +89,8 @@ async function bootstrapStore(store: string, directory: string) {
     const revision = head(directory);
     const current = await loadIfPresent(store);
     if (!checkedAt(current, revision)) await seedLandmarks(store, directory, revision, current);
-    await recheckStore(store, directory, revision).catch(error => console.error(`recheck skipped: ${error instanceof Error ? error.message : error}`));
+    const pending = await recheckStore(store, directory, revision).catch(error => console.error(`recheck skipped: ${error instanceof Error ? error.message : error}`));
+    if (pending && process.env.TRUTHINESS_REVIEWER) recheckInBackground(store, directory);
 }
 
 async function seedLandmarks(store: string, directory: string, revision: string, current: Graph) {
@@ -101,10 +107,10 @@ async function seedLandmarks(store: string, directory: string, revision: string,
     console.log(`Bootstrapped ${result.published} source claims.`);
 }
 
-async function recheckStore(store: string, directory: string, revision: string) {
+async function recheckStore(store: string, directory: string, revision: string, reviewer?: string) {
     const graph = await loadIfPresent(store);
     const batch = recheckBatch(graph, revision);
-    if (!batch) return;
+    if (!batch) return 0;
     const sources = readBlobsAt(directory, revision, observedPaths(batch));
     const earlier = new Map<string, string | undefined>();
     const read = (at: string, path: string) => {
@@ -113,9 +119,15 @@ async function recheckStore(store: string, directory: string, revision: string) 
         if (!earlier.has(key)) earlier.set(key, readBlob(directory, at, path));
         return earlier.get(key);
     };
-    const result = reviewRechecks(graph, batch, revision, read, process.env.TRUTHINESS_REVIEWER);
+    const result = reviewRechecks(graph, batch, revision, read, reviewer);
     await publishNew(store, result.approved, payload => publishRechecks(store, payload));
     if (result.published) console.log(`Rechecked ${result.published} claims; ${result.pending} need a fresh check.`);
+    return result.pending;
+}
+
+// Session start kills bootstrap after 15 s; reviewer calls take up to 30 s each, so they run detached after the code-only rechecks are published.
+function recheckInBackground(store: string, directory: string) {
+    spawn(process.execPath, [import.meta.path, "recheck-review", store], { cwd: directory, detached: true, stdio: "ignore" }).unref();
 }
 
 function observedPaths(batch: string): string[] {

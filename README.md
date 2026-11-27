@@ -161,7 +161,8 @@ export TRUTHINESS_REVIEW_COMMAND="omp -p --no-tools --no-skills --no-rules --no-
 
 | Command | Use |
 | --- | --- |
-| `truthiness bootstrap STORE` | Seed and recheck notes against the latest source commit. Paths with the `truthiness` attribute unset in `.gitattributes` (`bench/** -truthiness`) are not seeded. |
+| `truthiness bootstrap STORE` | Seed and recheck notes against the latest source commit. Paths with the `truthiness` attribute unset in `.gitattributes` (`bench/** -truthiness`) are not seeded. Rechecks that need the reviewer run in a background `recheck-review`. |
+| `truthiness recheck-review STORE` | Recheck notes with `TRUTHINESS_REVIEWER`. Bootstrap starts it in the background. |
 | `truthiness index STORE SCOPE REVISION [TOKENIZER]` | Print the startup index, with a count of stale notes it hides. Use `""` for an unscoped index. Agent notes come first; seeded `path: line` notes follow one per file before any second, ranked README heading, exported symbol, other code, test. |
 | `truthiness stale STORE SCOPE REVISION` | Print a refresh draft for the first stale note. Edit its quoted line, then stage it. Prints nothing when none is stale. |
 | `truthiness query STORE [TOKENIZER]` | Look up notes via a JSON request on stdin (`id`, `sparse`, `flat` or `graph`). `explain: true` adds `score` and `terms` to sparse matches. |

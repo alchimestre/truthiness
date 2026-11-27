@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -423,11 +423,32 @@ function commitParser(cwd: string, source: string) {
 }
 
 function recheckedAt(cwd: string, reviewer: string, revision: string, ids = ["quote", "behavior"]) {
-    const run = Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl"], { cwd, env: { ...process.env, TRUTHINESS_REVIEWER: reviewer } });
-    expect(run.exitCode).toBe(0);
+    const env = { ...process.env, TRUTHINESS_REVIEWER: "" };
+    expect(Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl"], { cwd, env }).exitCode).toBe(0);
+    expect(Bun.spawnSync(["bun", cli, "recheck-review", "canonical.jsonl"], { cwd, env: { ...env, TRUTHINESS_REVIEWER: reviewer } }).exitCode).toBe(0);
     const store = readFileSync(join(cwd, "canonical.rechecks.jsonl"), "utf8");
     return Object.fromEntries(ids.map(id => [id, store.includes(`"id":"${id}-recheck-${revision.slice(0, 12)}-0"`)]));
 }
+
+test("bootstrap returns before reviewer rechecks, which finish in a background process", () => {
+    fixture((cwd, revision) => {
+        const path = join(cwd, "pending.jsonl");
+        const reviewer = join(cwd, "reviewer");
+        writeFileSync(reviewer, "#!/usr/bin/env bun\nconst { candidates } = await Bun.stdin.json();\nconsole.log(JSON.stringify(candidates.map(candidate => candidate.id)));\n", { mode: 0o700 });
+        writeFileSync(path, batch(revision, "behavior", "`parse` returns its argument unchanged.", "    return value;"));
+        expect(reviewPending(cwd, path, reviewer)).toMatchObject({ published: 1 });
+        const reworded = commitParser(cwd, "export function parse(value) {\n    return value; // as given\n}\n");
+        expect(Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl"], { cwd, env: { ...process.env, TRUTHINESS_REVIEWER: reviewer } }).exitCode).toBe(0);
+        const rechecks = join(cwd, "canonical.rechecks.jsonl");
+        const deadline = Date.now() + backgroundRecheckWaitMs;
+        // The detached recheck process exposes no handle or event, so the test can only poll its output file.
+        while (!(existsSync(rechecks) && readFileSync(rechecks, "utf8").includes(`behavior-recheck-${reworded.slice(0, 12)}`)) && Date.now() < deadline) Bun.sleepSync(pollMs);
+        expect(readFileSync(rechecks, "utf8")).toContain(`behavior-recheck-${reworded.slice(0, 12)}`);
+    }, "export function parse(value) {\n    return value;\n}\n");
+});
+
+const backgroundRecheckWaitMs = 10_000;
+const pollMs = 100;
 
 function reviewPending(cwd: string, path: string, reviewer = "") {
     const result = Bun.spawnSync(["bun", cli, "review-pending", "canonical.jsonl", path], { cwd, env: { ...process.env, TRUTHINESS_REVIEWER: reviewer } });
