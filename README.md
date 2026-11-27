@@ -154,6 +154,8 @@ export TRUTHINESS_REVIEWER=/path/to/truthiness/scripts/truthiness-reviewer.sh
 export TRUTHINESS_REVIEW_COMMAND="omp -p --no-tools --no-skills --no-rules --no-context-files --model sonnet"
 ```
 
+A reviewer command that exits non-zero leaves its claims pending; the next session start names the failure and its first error line.
+
 </details>
 
 <details>
