@@ -60,7 +60,7 @@ test("session start injects the index and draft instructions only on a clean tre
     expect(startup).toContain("No notes about behaviour yet");
     expect(startup).not.toContain(`config.ts: ${source}`);
     expect(startup).toContain(`${hook} draft`);
-    expect(startup).toContain("Writing notes");
+    expect(startup).toContain("Draft notes and configure a reviewer");
 
     appendFileSync(join(repo, "notes.txt"), "uncommitted\n");
     expect(runHook("session-start", JSON.stringify({ cwd: repo }))).toBe("");
