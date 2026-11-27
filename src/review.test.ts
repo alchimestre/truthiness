@@ -447,6 +447,25 @@ test("bootstrap returns before reviewer rechecks, which finish in a background p
     }, "export function parse(value) {\n    return value;\n}\n");
 });
 
+test("bootstrap reviews a draft once the code it quotes is committed", () => {
+    fixture((cwd, revision) => {
+        const pending = join(cwd, "pending");
+        const reviewer = join(cwd, "reviewer");
+        writeFileSync(reviewer, "#!/usr/bin/env bun\nconst { candidates } = await Bun.stdin.json();\nconsole.log(JSON.stringify(candidates.map(candidate => candidate.id)));\n", { mode: 0o700 });
+        mkdirSync(pending);
+        const draft = join(pending, "draft.jsonl");
+        writeFileSync(draft, batch(revision, "trim", "`parse` trims its argument.", "    return value.trim();"));
+        expect(reviewPending(cwd, draft)).toMatchObject({ published: 0, pending: 1 });
+        commitParser(cwd, "export function parse(value) {\n    return value.trim();\n}\n");
+        expect(Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl", pending], { cwd, env: { ...process.env, TRUTHINESS_REVIEWER: reviewer } }).exitCode).toBe(0);
+        const store = join(cwd, "canonical.jsonl");
+        const deadline = Date.now() + backgroundRecheckWaitMs;
+        // The detached review process exposes no handle or event, so the test can only poll its output file.
+        while (!(existsSync(store) && readFileSync(store, "utf8").includes('"id":"trim"')) && Date.now() < deadline) Bun.sleepSync(pollMs);
+        expect(readFileSync(store, "utf8")).toContain('"id":"trim"');
+    });
+});
+
 const backgroundRecheckWaitMs = 10_000;
 const pollMs = 100;
 

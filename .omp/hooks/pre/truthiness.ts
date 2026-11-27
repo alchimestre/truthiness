@@ -124,12 +124,12 @@ function recallPrompt(hook: Hook, event: AgentStart, cwd: string): string[] | un
 
 async function startupIndex(hook: Hook, ctx: Session) {
     if (!hook.enabled) return;
-    const { store } = memoryPaths(ctx.cwd);
+    const { store, pending } = memoryPaths(ctx.cwd);
     const head = cleanSourceRevision(ctx.cwd);
     if (!store || !head) return;
     // Only an explicit hasUI=false (print/RPC mode) is headless; a missing flag is not.
     if (bootstrapAllowed(ctx.hasUI === false)) {
-        const bootstrap = runWorker(hook.program, ["bootstrap", store], { cwd: ctx.cwd, timeout: 15_000 });
+        const bootstrap = runWorker(hook.program, ["bootstrap", store, ...(pending ? [pending] : [])], { cwd: ctx.cwd, timeout: 15_000 });
         await bootstrap.catch(() => hook.pi.logger.warn("Truthiness could not bootstrap project memory."));
     }
     const current = snapshot(ctx.cwd, store, head);

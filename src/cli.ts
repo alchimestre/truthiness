@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 import { spawn } from "node:child_process";
-import { appendFile, readFile, unlink } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { appendFile, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { sourceRevision } from "./agent.ts";
+import { outcomeSuffix, reviewInBackground, sourceRevision } from "./agent.ts";
 import { bootstrap, checkedAt, readBlob, readBlobsAt } from "./bootstrap.ts";
 import { claimRecordIDs, load, parseProposal, publish, publishAuthorized, publishRechecks, stage, unstage, type Graph } from "./store.ts";
 import { estimateTokens, index, notesByPath, query, staleDraft } from "./lookup.ts";
@@ -49,8 +51,8 @@ async function run(args: string[]) {
             console.log(JSON.stringify({ notes: Object.fromEntries(notesByPath(await load(path), options[0])) }));
             return;
         case "bootstrap":
-            requireOptions(options, 0);
-            await bootstrapStore(path, process.cwd());
+            requireOptions(options, 0, 1);
+            await bootstrapStore(path, process.cwd(), options[0]);
             return;
         case "recheck-review":
             requireOptions(options, 0);
@@ -85,12 +87,47 @@ async function run(args: string[]) {
     }
 }
 
-async function bootstrapStore(store: string, directory: string) {
+async function bootstrapStore(store: string, directory: string, pendingDirectory?: string) {
     const revision = head(directory);
     const current = await loadIfPresent(store);
     if (!checkedAt(current, revision)) await seedLandmarks(store, directory, revision, current);
     const pending = await recheckStore(store, directory, revision).catch(error => console.error(`recheck skipped: ${error instanceof Error ? error.message : error}`));
     if (pending && process.env.TRUTHINESS_REVIEWER) recheckInBackground(store, directory);
+    if (pendingDirectory && process.env.TRUTHINESS_REVIEWER) await reviewCommittedDrafts(store, pendingDirectory, directory, revision);
+}
+
+async function reviewCommittedDrafts(store: string, pendingDirectory: string, directory: string, revision: string) {
+    const names = await readdir(pendingDirectory).catch(() => [] as string[]);
+    for (const name of names.filter(entry => entry.endsWith(".jsonl"))) {
+        const path = join(pendingDirectory, name);
+        if (existsSync(`${path}${outcomeSuffix}`)) continue;
+        const refreshed = await readFile(path, "utf8").then(batch => draftCommittedSince(batch, directory, revision)).catch(() => undefined);
+        if (!refreshed) continue;
+        await writeFile(path, refreshed);
+        reviewInBackground([process.execPath, import.meta.path], directory, store, path);
+    }
+}
+
+type DraftRecord = { kind: string; content?: string; source_ref?: string; context?: object; assessment?: object };
+
+function draftCommittedSince(batch: string, directory: string, revision: string): string | undefined {
+    const records = batch.split("\n").filter(Boolean).map(line => JSON.parse(line) as DraftRecord);
+    const quotes = records.filter(record => record.kind === "observation").map(record => ({ content: String(record.content), ...splitRef(String(record.source_ref)) }));
+    const draftedUncommitted = quotes.some(({ content, at, path }) => at !== revision && !readBlob(directory, at, path)?.includes(content));
+    const committedNow = quotes.length > 0 && quotes.every(({ content, path }) => readBlob(directory, revision, path)?.includes(content));
+    if (!draftedUncommitted || !committedNow) return undefined;
+    return records.map(record => JSON.stringify(atRevision(record, revision))).join("\n") + "\n";
+}
+
+function splitRef(ref: string) {
+    const separator = ref.indexOf(":");
+    return { at: ref.slice(0, separator), path: ref.slice(separator + 1) };
+}
+
+function atRevision(record: DraftRecord, revision: string): DraftRecord {
+    if (record.kind === "observation") return { ...record, source_ref: `${revision}:${splitRef(String(record.source_ref)).path}`, context: { ...record.context, revision } };
+    if (record.kind === "evidence_for") return { ...record, assessment: { ...record.assessment, revision } };
+    return record;
 }
 
 async function seedLandmarks(store: string, directory: string, revision: string, current: Graph) {

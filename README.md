@@ -133,7 +133,7 @@ One-line quotes must be unique in their file; a duplicated line stays pending as
 | Exact quote: `claim.text` is `path: line`, with one anchor, no symbol and scope `repo` | Publishes without a model if the entire line matches committed source (ignoring surrounding whitespace). |
 | Statement in your own words | Stays pending unless the [reviewer](#reviewer) confirms it from committed source. |
 
-Use unique record IDs. Each anchor needs its own observation. Keep `claim.check` null and set `evidence_for.assessment.scope` to the claim's scope. If the source revision changes before review, refresh the draft.
+Use unique record IDs. Each anchor needs its own observation. Keep `claim.check` null and set `evidence_for.assessment.scope` to the claim's scope. A draft may quote code that is not committed yet: it stays pending, and once every quote is committed, the next session start restamps it to the new commit and reviews it again.
 
 When a claim says more than its one-line quote, Truthiness also records a hash of the block that line opens: its indented body, or the section under a Markdown heading. A bare `path: line` quote is unaffected.
 
@@ -161,7 +161,7 @@ export TRUTHINESS_REVIEW_COMMAND="omp -p --no-tools --no-skills --no-rules --no-
 
 | Command | Use |
 | --- | --- |
-| `truthiness bootstrap STORE` | Seed and recheck notes against the latest source commit. Paths with the `truthiness` attribute unset in `.gitattributes` (`bench/** -truthiness`) are not seeded. Rechecks that need the reviewer run in a background `recheck-review`. |
+| `truthiness bootstrap STORE [PENDING_DIR]` | Seed and recheck notes against the latest source commit. Paths with the `truthiness` attribute unset in `.gitattributes` (`bench/** -truthiness`) are not seeded. Rechecks that need the reviewer run in a background `recheck-review`. With `PENDING_DIR` and a reviewer set, drafts whose quotes were uncommitted when drafted and are now committed get a background `review-pending`. |
 | `truthiness recheck-review STORE` | Recheck notes with `TRUTHINESS_REVIEWER`. Bootstrap starts it in the background. |
 | `truthiness index STORE SCOPE REVISION [TOKENIZER]` | Print the startup index of notes about behaviour, with a count of stale notes it hides. Use `""` for an unscoped index. Seeded `path: line` notes are left out; lookup still finds them. With no behaviour notes, it asks the agent to propose some. |
 | `truthiness stale STORE SCOPE REVISION` | Print a refresh draft for the first stale note. Edit its quoted line, then stage it. Prints nothing when none is stale. |

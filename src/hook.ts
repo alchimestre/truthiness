@@ -38,7 +38,7 @@ async function sessionStart({ cwd }: { cwd: string }) {
     const head = cleanSourceRevision(cwd);
     if (!store || !head) return;
     if (bootstrapAllowed(claudeHeadless())) {
-        await runWorker(program, ["bootstrap", store], { cwd, timeout: 15_000 }).catch(() => warn("Truthiness could not bootstrap project memory."));
+        await runWorker(program, ["bootstrap", store, ...(pending ? [pending] : [])], { cwd, timeout: 15_000 }).catch(() => warn("Truthiness could not bootstrap project memory."));
     }
     if (existsSync(resolve(cwd, store))) {
         const index = command(program, ["index", store, "", head, ...tokenizerArgument(tokenizer)], cwd);
