@@ -85,7 +85,7 @@ function registerDraftTool(hook: Hook) {
     hook.pi.registerTool({
         name: "truthiness_draft",
         label: "Memory draft",
-        description: `Submit new notes as store records in JSONL, one per line, with secrets removed. Each note is checked against committed source now: supported notes publish, the rest stay pending. ${noteFormatHelp}`,
+        description: `Submit new notes as store records in JSONL, one per line, with secrets removed. Each note is checked against committed source now: supported notes publish, the rest stay pending. Call this tool directly. From bash, pass a JSON file holding {"jsonl": "..."} as \`truthiness_draft @args.json\` (build it with \`jq -Rs '{jsonl:.}' notes.jsonl > args.json\`); \`--jsonl "$(cat notes.jsonl)"\` and \`@notes.jsonl\` stage nothing. ${noteFormatHelp}`,
         parameters: hook.pi.zod.object({ jsonl: hook.pi.zod.string() }),
         async execute(_id, { jsonl }, _signal, _onUpdate, ctx) {
             if (!hook.enabled) return { content: [{ type: "text", text: "Truthiness is off for this session; nothing was staged." }], details: {} };
