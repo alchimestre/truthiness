@@ -321,7 +321,11 @@ function decide(candidates: Candidate[], blobs: Map<string, string | undefined>,
 
 function askReviewer(reviewer: string, input: string, ids: Set<string>): Map<string, boolean> {
     const result = spawnSync(reviewer, [], { input, encoding: "utf8", timeout: 30_000, maxBuffer: reviewRequestBytes });
-    if (result.status !== 0) return new Map();
+    if (result.status !== 0) {
+        const detail = result.error?.message ?? result.stderr?.trim().split("\n")[0] ?? "";
+        console.error(`reviewer ${reviewer} exited with status ${result.status ?? result.signal}: ${detail}`);
+        return new Map();
+    }
     try {
         const approved = parseVerdict(result.stdout);
         if (!Array.isArray(approved) || !approved.every(id => typeof id === "string" && ids.has(id))) return new Map();

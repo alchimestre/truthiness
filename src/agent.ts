@@ -145,11 +145,14 @@ export async function stageAndReview(program: string, cwd: string, store: string
 
 export const outcomeSuffix = ".outcome.json";
 const pidSuffix = ".reviewer.pid";
+const errorLogSuffix = ".reviewer.log";
 
 export function reviewInBackground(program: string[], cwd: string, store: string, path: string) {
     const outcome = openSync(`${path}${outcomeSuffix}`, "w");
-    const child = spawn(program[0], [...program.slice(1), "review-pending", store, path], { cwd, detached: true, stdio: ["ignore", outcome, "ignore"] });
+    const errors = openSync(`${path}${errorLogSuffix}`, "w");
+    const child = spawn(program[0], [...program.slice(1), "review-pending", store, path], { cwd, detached: true, stdio: ["ignore", outcome, errors] });
     closeSync(outcome);
+    closeSync(errors);
     if (child.pid) writeFileSync(`${path}${pidSuffix}`, String(child.pid));
     child.unref();
 }
@@ -163,6 +166,7 @@ export function backgroundReviewNotice(cwd: string, pendingDirectory: string): s
     const rejected: string[] = [];
     const unresolved: string[] = [];
     const crashed: string[] = [];
+    const reviewerErrors = new Set<string>();
     for (const name of readdirSync(directory).filter(entry => entry.endsWith(outcomeSuffix))) {
         const path = join(directory, name);
         const batchPath = path.slice(0, -outcomeSuffix.length);
@@ -177,12 +181,21 @@ export function backgroundReviewNotice(cwd: string, pendingDirectory: string): s
         } else continue;
         unlinkSync(path);
         rmSync(`${batchPath}${pidSuffix}`, { force: true });
+        const failure = reviewerFailure(`${batchPath}${errorLogSuffix}`);
+        if (failure) reviewerErrors.add(failure);
+        rmSync(`${batchPath}${errorLogSuffix}`, { force: true });
     }
     const lines = [];
     if (rejected.length) lines.push(`Truthiness background review rejected ${listed(rejected)}. Revise the claim or its evidence and draft it again.`);
     if (unresolved.length) lines.push(`Truthiness background review returned no verdict for ${listed(unresolved)}; they stay pending for operator review.`);
     if (crashed.length) lines.push(`Truthiness background review did not finish for ${listed(crashed)}; they stay pending for operator review.`);
+    if (reviewerErrors.size) lines.push(`The reviewer command failed: ${[...reviewerErrors].join("; ")}. Check TRUTHINESS_REVIEWER and the variables it needs.`);
     return lines.length ? lines.join("\n") : undefined;
+}
+
+function reviewerFailure(logPath: string): string | undefined {
+    if (!existsSync(logPath)) return undefined;
+    return readFileSync(logPath, "utf8").split("\n").find(line => line.startsWith("reviewer "));
 }
 
 function reviewMayBeRunning(outcomePath: string, pidPath: string): boolean {

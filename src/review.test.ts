@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { backgroundReviewNotice, reviewInBackground } from "./agent.ts";
 import { readBlobsAt } from "./bootstrap.ts";
 
 const cli = fileURLToPath(new URL("./cli.ts", import.meta.url));
@@ -463,6 +464,28 @@ test("bootstrap reviews a draft once the code it quotes is committed", () => {
         // The detached review process exposes no handle or event, so the test can only poll its output file.
         while (!(existsSync(store) && readFileSync(store, "utf8").includes('"id":"trim"')) && Date.now() < deadline) Bun.sleepSync(pollMs);
         expect(readFileSync(store, "utf8")).toContain('"id":"trim"');
+    });
+});
+
+test("a failing background reviewer is named in the next session notice", () => {
+    fixture((cwd, revision) => {
+        const pending = join(cwd, "pending");
+        const reviewer = join(cwd, "reviewer");
+        writeFileSync(reviewer, "#!/bin/sh\necho 'REVIEW_COMMAND is not set' >&2\nexit 1\n", { mode: 0o700 });
+        mkdirSync(pending);
+        const draft = join(pending, "draft.jsonl");
+        writeFileSync(draft, batch(revision, "trim", "`parse` returns its argument.", excerpt));
+        process.env.TRUTHINESS_REVIEWER = reviewer;
+        try {
+            reviewInBackground(["bun", cli], cwd, "canonical.jsonl", draft);
+        } finally {
+            delete process.env.TRUTHINESS_REVIEWER;
+        }
+        const deadline = Date.now() + backgroundRecheckWaitMs;
+        while (!readFileSync(`${draft}.outcome.json`, "utf8") && Date.now() < deadline) Bun.sleepSync(pollMs);
+        const notice = backgroundReviewNotice(cwd, pending);
+        expect(notice).toContain("The reviewer command failed: reviewer");
+        expect(notice).toContain("REVIEW_COMMAND is not set");
     });
 });
 
