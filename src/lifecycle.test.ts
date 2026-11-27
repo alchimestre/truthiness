@@ -141,6 +141,8 @@ async function exerciseLifecycle(repo: string, state: string, store: string) {
     expect(readFileSync(store, "utf8")).toContain('"id":"claim-1"');
     expect(await submit(verified)).toBe("0 published, 0 pending automatic or operator review.");
     expect(readdirSync(state).filter(file => file.endsWith(".jsonl"))).toHaveLength(2);
+    expect(await submit('{"claim":"handler returns its request"}\n')).toContain("Draft not staged: line 1: id must be a nonempty string");
+    expect(warnings.splice(0)).toHaveLength(1);
     const edit = (path: string) => handlers.get("tool_call")({ toolName: "edit", input: { path } }, ctx);
     expect(await edit("source.py")).toBeUndefined();
     const behaviour = join(repo, "..", `${repo.split("/").at(-1)}-behaviour.jsonl`);

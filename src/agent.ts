@@ -109,10 +109,17 @@ export function notesFor(notes: Map<string, string[]>, edited: string[]): Map<st
     return new Map(edited.flatMap(path => notes.has(path) ? [[path, notes.get(path)!] as const] : []));
 }
 
+const stageTimeoutMs = 5000;
+const maxStageErrorChars = 500;
+
 export async function stageAndReview(program: string, cwd: string, store: string, pendingDirectory: string, draft: string, warn: (text: string) => void): Promise<string> {
     const path = resolve(cwd, pendingDirectory, `${randomUUID()}.jsonl`);
-    if (command(program, ["stage", path], cwd, draft) === undefined) {
-        const text = "Could not confirm staging; nothing was sent for automatic review.";
+    const staged = spawnSync(program, ["stage", path], { cwd, input: draft, encoding: "utf8", timeout: stageTimeoutMs });
+    if (staged.status !== 0) {
+        const reason = staged.stderr?.trim().slice(0, maxStageErrorChars);
+        const text = reason
+            ? `Draft not staged: ${reason}. Each line must be one store record (kind claim, observation or evidence_for) with an id. ${noteFormatHelp}`
+            : "Could not confirm staging; nothing was sent for automatic review.";
         warn(text);
         return text;
     }
