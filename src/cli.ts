@@ -6,7 +6,7 @@ import { bootstrap, checkedAt, readBlob, readBlobsAt } from "./bootstrap.ts";
 import { claimRecordIDs, load, parseProposal, publish, publishAuthorized, publishRechecks, stage, unstage, type Graph } from "./store.ts";
 import { anchoredPaths, estimateTokens, index, query, staleDraft } from "./lookup.ts";
 import { currentAxioms } from "./axioms.ts";
-import { digest, recheckBatch, review, unchangedSinceReview, type PendingReason } from "./review.ts";
+import { digest, recheckBatch, review, reviewRechecks, type PendingReason } from "./review.ts";
 
 const maxProposalBytes = 16 * 1024 * 1024;
 
@@ -113,7 +113,7 @@ async function recheckStore(store: string, directory: string, revision: string) 
         if (!earlier.has(key)) earlier.set(key, readBlob(directory, at, path));
         return earlier.get(key);
     };
-    const result = review(batch, revision, path => sources.get(path), process.env.TRUTHINESS_REVIEWER, unchangedSinceReview(graph, revision, read));
+    const result = reviewRechecks(graph, batch, revision, read, process.env.TRUTHINESS_REVIEWER);
     await publishNew(store, result.approved, payload => publishRechecks(store, payload));
     if (result.published) console.log(`Rechecked ${result.published} claims; ${result.pending} need a fresh check.`);
 }

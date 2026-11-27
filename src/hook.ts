@@ -2,7 +2,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { anchoredPathsOf, anchoredWarning, backgroundReviewNotice, cleanSourceRevision, command, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "./agent.ts";
+import { anchoredPathsOf, anchoredWarning, backgroundReviewNotice, cleanSourceRevision, command, commitNudge, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "./agent.ts";
 import { bootstrapAllowed, claudeHeadless, recallContext } from "./session.ts";
 
 type HookInput = { cwd?: unknown; tool_input?: unknown; prompt?: unknown };
@@ -61,10 +61,11 @@ async function postEdit({ cwd, toolInput }: { cwd: string; toolInput: unknown })
 }
 
 async function promptSubmit({ cwd, prompt }: { cwd: string; prompt: string }) {
-    const { store } = memoryPaths(cwd);
+    const { store, pending } = memoryPaths(cwd);
     const head = cleanSourceRevision(cwd);
     if (!store || !head || !existsSync(resolve(cwd, store))) return;
-    const context = recallContext(program, store, head, tokenizer, cwd, prompt);
+    const nudge = pending && commitNudge(cwd, pending, head);
+    const context = [recallContext(program, store, head, tokenizer, cwd, prompt), nudge].filter(Boolean).join("\n");
     if (context) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context } }));
 }
 

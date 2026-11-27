@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ExtensionAPI, ToolCallEvent } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { anchoredPathsOf, anchoredWarning, backgroundReviewNotice, cleanSourceRevision, command, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "../../../src/agent.ts";
+import { anchoredPathsOf, anchoredWarning, backgroundReviewNotice, cleanSourceRevision, command, commitNudge, defaultProgram, memoryPaths, noteFormatHelp, repositoryRelative, runWorker, stageAndReview, tokenizerArgument, unknownTargetWarning } from "../../../src/agent.ts";
 import { bootstrapAllowed, recallContext } from "../../../src/session.ts";
 
 const messageType = "truthiness-index";
@@ -107,7 +107,10 @@ async function agentStart(hook: Hook, event: AgentStart, ctx: Session) {
 
 function reviewNotice(hook: Hook, cwd: string) {
     const { pending } = memoryPaths(cwd);
-    return hook.enabled && pending ? backgroundReviewNotice(cwd, pending) : undefined;
+    const head = cleanSourceRevision(cwd);
+    if (!hook.enabled || !pending) return undefined;
+    const notices = [backgroundReviewNotice(cwd, pending), head && commitNudge(cwd, pending, head)].filter(Boolean);
+    return notices.length ? notices.join("\n") : undefined;
 }
 
 function recallPrompt(hook: Hook, event: AgentStart, cwd: string): string[] | undefined {

@@ -1,6 +1,6 @@
 import { execFile, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -48,6 +48,19 @@ export function memoryPaths(cwd: string) {
         store: process.env.TRUTHINESS_STORE || (repository && join(repository.root, storeDirectory, "canonical.jsonl")),
         pending: process.env.TRUTHINESS_PENDING || (repository && join(repository.gitDirectory, "truthiness", "pending")),
     };
+}
+
+const promptHeadFile = "prompt-head";
+
+// shortcut: one marker per repository, so with concurrent sessions only the first prompt after a commit is nudged; key it by session if that misses notes.
+export function commitNudge(cwd: string, pendingDirectory: string, head: string): string | undefined {
+    const marker = join(resolve(cwd, pendingDirectory), "..", promptHeadFile);
+    const previous = existsSync(marker) ? readFileSync(marker, "utf8").trim() : undefined;
+    if (previous === head) return undefined;
+    mkdirSync(dirname(marker), { recursive: true });
+    writeFileSync(marker, head);
+    if (!previous || command("git", ["merge-base", "--is-ancestor", previous, head], cwd) === undefined) return undefined;
+    return `Commits landed since the last prompt (${previous.slice(0, 7)}..${head.slice(0, 7)}). If you verified a behaviour in them worth keeping (a limit, default, condition or error path), propose it as a Truthiness note now. ${noteFormatHelp}`;
 }
 
 export function repositoryRelative(targets: string[], cwd: string, root: string): string[] {

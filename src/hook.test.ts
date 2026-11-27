@@ -98,6 +98,17 @@ test("a prompt gets matching behavioral claims as context, not bare quotes; an u
     expect(runHook("prompt-submit", JSON.stringify({ cwd: repo, prompt: "Rename the logging helper" }))).toBe("");
 });
 
+test("the first prompt after a new commit asks for notes once", () => {
+    const prompt = JSON.stringify({ cwd: repo, prompt: "Next task" });
+    runHook("session-start", JSON.stringify({ cwd: repo }));
+    expect(runHook("prompt-submit", prompt)).toBe("");
+    writeFileSync(join(repo, "limits.ts"), "export const RETRY_LIMIT = 3;\n");
+    git("add", "limits.ts");
+    git("commit", "--quiet", "-m", "Limit");
+    expect(JSON.parse(runHook("prompt-submit", prompt)).hookSpecificOutput.additionalContext).toContain("propose it as a Truthiness note");
+    expect(runHook("prompt-submit", prompt)).toBe("");
+});
+
 test("a background rejection is reported once at the next session start", () => {
     const line = "export const RETRY_LIMIT = 3;";
     writeFileSync(join(repo, "limits.ts"), `${line}\n`);

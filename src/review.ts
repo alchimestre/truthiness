@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { containsDetectableSecret, parseProposal, privateKeyBegin, type Graph } from "./store.ts";
+import { claimRecordIDs, containsDetectableSecret, parseProposal, privateKeyBegin, type Graph } from "./store.ts";
 
 type RecordLine = Graph[string];
 type Source = (path: string) => string | undefined;
@@ -79,6 +79,70 @@ export function recheckBatch(store: Graph, revision: string): string {
         }
     }
     return lines.map(line => `${JSON.stringify(line)}\n`).join("");
+}
+
+type RevisionSource = (revision: string, path: string) => string | undefined;
+
+// A re-anchored quote is new evidence: it must reach the reviewer, never the unchanged-code skip.
+export function reviewRechecks(store: Graph, batch: string, revision: string, read: RevisionSource, reviewer?: string) {
+    const current = (path: string) => read(revision, path);
+    const mismatched = reviewer ? review(batch, revision, current).pendingReasons.filter(({ reason }) => reason === "source_mismatch") : [];
+    const graph = parseProposal(batch);
+    const moved = new Set(mismatched.map(({ id }) => String(id)).filter(id => !isBareQuote(graph, id)));
+    const unchanged = unchangedSinceReview(store, revision, read);
+    const reviewed = moved.size ? reanchorBatch(batch, moved, current) : batch;
+    return review(reviewed, revision, current, reviewer, id => !moved.has(id) && unchanged(id));
+}
+
+// Seeded `path: line` notes are re-seeded by bootstrap; re-anchoring would send each to the reviewer.
+function isBareQuote(graph: Graph, claimID: string): boolean {
+    const observations = claimRecordIDs(graph, claimID).map(id => graph[id]).filter(record => record.kind === "observation");
+    return observations.some(observation => {
+        const reference = String(observation.source_ref);
+        return graph[claimID].text === `${reference.slice(reference.indexOf(":") + 1)}: ${String(observation.content).trim()}`;
+    });
+}
+
+function reanchorBatch(batch: string, moved: ReadonlySet<string>, source: Source): string {
+    const graph = parseProposal(batch);
+    const lines: RecordLine[] = [];
+    for (const claim of Object.values(graph).filter(record => record.kind === "claim")) {
+        const records = claimRecordIDs(graph, claim.id).map(id => graph[id]);
+        const kept = moved.has(claim.id) ? records.map(record => reanchored(record, source)) : records;
+        if (kept.every(record => record !== undefined)) lines.push(...kept as RecordLine[]);
+    }
+    return lines.map(line => `${JSON.stringify(line)}\n`).join("");
+}
+
+function reanchored(record: RecordLine, source: Source): RecordLine | undefined {
+    if (record.kind === "evidence_for") return { ...record, rationale: "Source excerpt re-anchored" };
+    if (record.kind !== "observation") return record;
+    const reference = String(record.source_ref);
+    const text = source(reference.slice(reference.indexOf(":") + 1));
+    const content = String(record.content);
+    const { block_sha256: _, ...context } = record.context as Record<string, unknown>;
+    if (matchesSource(text, content.trim())) return { ...record, context };
+    const line = text === undefined || content.includes("\n") ? undefined : closestLine(text, content);
+    return line === undefined ? undefined : { ...record, content: line, context };
+}
+
+const minimumTokenOverlap = 0.5;
+
+// Jaccard overlap of identifier tokens; a tie between two lines is no anchor at all.
+function closestLine(source: string, quote: string): string | undefined {
+    const tokens = (line: string) => new Set(line.match(/\w+/g) ?? []);
+    const wanted = tokens(quote);
+    let best: string | undefined;
+    let bestScore = 0;
+    let tied = false;
+    for (const line of new Set(source.split("\n").map(candidate => candidate.trim()).filter(Boolean))) {
+        const found = tokens(line);
+        const shared = [...found].filter(token => wanted.has(token)).length;
+        const score = shared / (wanted.size + found.size - shared || 1);
+        if (score === bestScore) tied = true;
+        if (score > bestScore) [best, bestScore, tied] = [line, score, false];
+    }
+    return bestScore >= minimumTokenOverlap && !tied ? best : undefined;
 }
 
 const unchangedContextLines = 3;
@@ -240,11 +304,23 @@ function indentation(line: string): number {
 // The largest source files are ~24 KB; larger files are sent as windows around the evidence.
 const reviewRequestBytes = 64 * 1024;
 
+// Bounds model cost when one commit invalidates many claims; the rest stay pending.
+const maxReviewerCalls = 4;
+
 function decide(candidates: Candidate[], blobs: Map<string, string | undefined>, reviewer: string): Map<string, boolean> {
-    const limit = reviewRequestBytes;
-    const { input, ids } = reviewRequest(candidates, blobs, limit);
-    if (!ids.size) return new Map();
-    const result = spawnSync(reviewer, [], { input, encoding: "utf8", timeout: 30_000, maxBuffer: limit });
+    const verdicts = new Map<string, boolean>();
+    let remaining = candidates;
+    for (let call = 0; call < maxReviewerCalls && remaining.length; call++) {
+        const { input, ids } = reviewRequest(remaining, blobs, reviewRequestBytes);
+        if (!ids.size) break;
+        for (const [id, verdict] of askReviewer(reviewer, input, ids)) verdicts.set(id, verdict);
+        remaining = remaining.filter(candidate => !ids.has(candidate.id));
+    }
+    return verdicts;
+}
+
+function askReviewer(reviewer: string, input: string, ids: Set<string>): Map<string, boolean> {
+    const result = spawnSync(reviewer, [], { input, encoding: "utf8", timeout: 30_000, maxBuffer: reviewRequestBytes });
     if (result.status !== 0) return new Map();
     try {
         const approved = parseVerdict(result.stdout);

@@ -304,7 +304,7 @@ test("staged source evidence at a past revision does not publish at HEAD", () =>
     });
 });
 
-test("a rewritten body hides a behavioral note whose quoted line survives, not a bare quote or a moved block", () => {
+test("a rewritten body sends a behavioral note back to the reviewer, not a bare quote or a moved block", () => {
     const opener = "export function parse(value) {";
     fixture((cwd, revision) => {
         const path = join(cwd, "pending.jsonl");
@@ -315,8 +315,27 @@ test("a rewritten body hides a behavioral note whose quoted line survives, not a
         const moved = commitParser(cwd, `export function other() {\n    return 1;\n}\n\n${opener}\n    return value;\n}\n`);
         expect(recheckedAt(cwd, reviewer, moved)).toEqual({ quote: true, behavior: true });
         const rewritten = commitParser(cwd, `${opener}\n    return value.trim();\n}\n`);
-        expect(recheckedAt(cwd, reviewer, rewritten)).toEqual({ quote: true, behavior: false });
+        const rejectAll = join(cwd, "reject-all");
+        writeFileSync(rejectAll, "#!/bin/sh\necho '[]'\n", { mode: 0o700 });
+        expect(recheckedAt(cwd, rejectAll, rewritten)).toEqual({ quote: true, behavior: false });
     }, `${opener}\n    return value;\n}\n`);
+});
+
+test("claims whose sources overflow one reviewer request are reviewed in a second call", () => {
+    const filler = `// ${"x".repeat(100)}\n`.repeat(400);
+    fixture((cwd, revision) => {
+        const calls = join(cwd, "calls");
+        const reviewer = join(cwd, "reviewer");
+        writeFileSync(reviewer, `#!/usr/bin/env bun\nconst { candidates } = await Bun.stdin.json();\nrequire("node:fs").appendFileSync(${JSON.stringify(calls)}, "call\\n");\nconsole.log(JSON.stringify(candidates.map(candidate => candidate.id)));\n`, { mode: 0o700 });
+        writeFileSync(join(cwd, "other.js"), `export function other(value) { return value; }\n${filler}`);
+        git(cwd, "add", ".");
+        git(cwd, "commit", "-qm", "Two large files");
+        const head = git(cwd, "rev-parse", "HEAD");
+        const path = join(cwd, "pending.jsonl");
+        writeFileSync(path, batch(head, "first", "`parse` returns its argument.") + batch(head, "second", "`other` returns its argument.", "export function other(value) { return value; }", "other.js"));
+        expect(reviewPending(cwd, path, reviewer)).toMatchObject({ published: 2 });
+        expect(readFileSync(calls, "utf8")).toBe("call\ncall\n");
+    }, `${excerpt}\n${filler}`);
 });
 
 test("a recheck skips the reviewer only when the store shows the code around the quote unchanged", () => {
@@ -338,6 +357,23 @@ test("a recheck skips the reviewer only when the store shows the code around the
         const near = commitParser(cwd, `${opener}\n${leaf}\n}\n// note\n`);
         expect(recheckedAt(cwd, rejectAll, near, ["behavior", "leaf"])).toEqual({ behavior: true, leaf: false });
     }, `export function parse(value) {\n    return value;\n}\n`);
+});
+
+test("a recheck re-anchors a reworded quote and sends it to the reviewer; a bare quote is not re-anchored", () => {
+    const opener = "export function parse(value) {";
+    fixture((cwd, revision) => {
+        const path = join(cwd, "pending.jsonl");
+        const seen = join(cwd, "seen");
+        const reviewer = join(cwd, "reviewer");
+        writeFileSync(reviewer, `#!/usr/bin/env bun\nconst { candidates } = await Bun.stdin.json();\nconst ids = candidates.map(candidate => candidate.id);\nrequire("node:fs").appendFileSync(${JSON.stringify(seen)}, ids.join(",") + "\\n");\nconsole.log(JSON.stringify(ids));\n`, { mode: 0o700 });
+        writeFileSync(path, batch(revision, "behavior", "`parse` returns its argument unchanged.", "    return value;") + batch(revision, "quote", `parser.js: ${opener}`, opener));
+        expect(reviewPending(cwd, path, reviewer)).toMatchObject({ published: 2 });
+        writeFileSync(seen, "");
+        const reworded = commitParser(cwd, "export function parseInput(value) {\n    return value; // as given\n}\n");
+        expect(recheckedAt(cwd, reviewer, reworded)).toEqual({ quote: false, behavior: true });
+        expect(readFileSync(seen, "utf8")).toBe("behavior\n");
+        expect(readFileSync(join(cwd, "canonical.rechecks.jsonl"), "utf8")).toContain('"content":"return value; // as given"');
+    }, `${opener}\n    return value;\n}\n`);
 });
 
 test("a draft shaped like a recheck of a published claim still needs the reviewer", () => {

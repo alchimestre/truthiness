@@ -141,6 +141,22 @@ describe("lookup index", () => {
     const ids = index(data, "service A", "abc", (value) => value.length).split("\n").filter((line) => line.startsWith("{")).map((line) => JSON.parse(line).id);
     expect(ids).toEqual(["claim", "a-landmark"]);
   });
+
+  test("orders landmarks by README heading, export, other code, test, one per file before any second", () => {
+    const data = records();
+    const landmark = (id: string, path: string, line: string) => {
+      data[id] = { id, kind: "claim", text: `${path}: ${line}`, scope: "service A", anchors: [{ path }] };
+      data[`${id}-observation`] = { id: `${id}-observation`, kind: "observation", content: `${line}\n`, context: { source_event_id: `${id}-event`, revision: "abc" } };
+      data[`${id}-evidence`] = { id: `${id}-evidence`, kind: "evidence_for", from: `${id}-observation`, to: id, assessment: { outcome: "supports", scope: "service A", revision: "abc" } };
+    };
+    landmark("a", "src/a.test.ts", "test(\"x\", () => {");
+    landmark("b", "src/b.ts", "function helper() {");
+    landmark("c", "src/b.ts", "export function main() {");
+    landmark("d", "src/c.ts", "export const limit = 3;");
+    landmark("e", "README.md", "## Install");
+    const ids = index(data, "service A", "abc", (value) => value.length).split("\n").filter((line) => line.startsWith("{")).map((line) => JSON.parse(line).id);
+    expect(ids).toEqual(["claim", "e", "c", "d", "a", "b"]);
+  });
 });
 
 describe("stale notes", () => {

@@ -135,15 +135,17 @@ One-line quotes must be unique in their file; a duplicated line stays pending as
 
 Use unique record IDs. Each anchor needs its own observation. Keep `claim.check` null and set `evidence_for.assessment.scope` to the claim's scope. If the source revision changes before review, refresh the draft.
 
-When a claim says more than its one-line quote, Truthiness also records a hash of the block that line opens: its indented body, or the section under a Markdown heading. When that block changes, the claim is hidden until it is redrafted, even if the quoted line is still present. A bare `path: line` quote is unaffected.
+When a claim says more than its one-line quote, Truthiness also records a hash of the block that line opens: its indented body, or the section under a Markdown heading. A bare `path: line` quote is unaffected.
 
-On a new commit, a published claim stays shown without a reviewer call while its quoted line and that block are unchanged. A quoted line that opens no block also needs the 3 lines above and below it unchanged. Otherwise the claim goes back to the reviewer.
+On a new commit, a published claim stays shown without a reviewer call while its quoted line and that block are unchanged. A quoted line that opens no block also needs the 3 lines above and below it unchanged. Otherwise the claim is hidden until the reviewer approves it again; when its quoted line was reworded, the most similar line in the same file is sent as the new quote. Without a reviewer, it stays hidden until redrafted.
 
 ### Reviewer
 
 Set `TRUTHINESS_REVIEWER` to an executable that reads JSON and returns a JSON array of approved IDs within 30 seconds, either as the whole reply or as a trailing array block that starts on its own line. The request includes whole committed files up to 64 KiB; larger files are sent as 60-line windows around each quoted excerpt. Use a local model if code must stay on the machine.
 
 Drafts return after the quote check; claims that need the reviewer are reviewed in a background process and reach the store and the next startup index when approved. The next session start lists claims the background reviewer rejected or left without a verdict, and claims whose review process exited without a result or ran past 10 minutes.
+
+The first prompt after new commits asks the agent to propose notes for behaviour it verified in them.
 
 [`scripts/truthiness-reviewer.sh`](scripts/truthiness-reviewer.sh) wraps a text-completion command. Use a command without tools or filesystem access: the prompt contains untrusted source.
 
@@ -160,7 +162,7 @@ export TRUTHINESS_REVIEW_COMMAND="omp -p --no-tools --no-skills --no-rules --no-
 | Command | Use |
 | --- | --- |
 | `truthiness bootstrap STORE` | Seed and recheck notes against the latest source commit. Paths with the `truthiness` attribute unset in `.gitattributes` (`bench/** -truthiness`) are not seeded. |
-| `truthiness index STORE SCOPE REVISION [TOKENIZER]` | Print the startup index, with a count of stale notes it hides. Use `""` for an unscoped index. |
+| `truthiness index STORE SCOPE REVISION [TOKENIZER]` | Print the startup index, with a count of stale notes it hides. Use `""` for an unscoped index. Agent notes come first; seeded `path: line` notes follow one per file before any second, ranked README heading, exported symbol, other code, test. |
 | `truthiness stale STORE SCOPE REVISION` | Print a refresh draft for the first stale note. Edit its quoted line, then stage it. Prints nothing when none is stale. |
 | `truthiness query STORE [TOKENIZER]` | Look up notes via a JSON request on stdin (`id`, `sparse`, `flat` or `graph`). `explain: true` adds `score` and `terms` to sparse matches. |
 | `truthiness anchors STORE` | List files quoted by valid notes. Re-read them before editing. |
