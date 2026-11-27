@@ -489,6 +489,25 @@ test("a failing background reviewer is named in the next session notice", () => 
     });
 });
 
+test("a failing background recheck reviewer is named in the next session notice", () => {
+    fixture((cwd, revision) => {
+        const path = join(cwd, "pending.jsonl");
+        const pending = join(cwd, "drafts");
+        writeFileSync(path, batch(revision, "behavior", "`parse` returns its argument unchanged.", "    return value;"));
+        const approving = join(cwd, "approving");
+        writeFileSync(approving, "#!/usr/bin/env bun\nconst { candidates } = await Bun.stdin.json();\nconsole.log(JSON.stringify(candidates.map(candidate => candidate.id)));\n", { mode: 0o700 });
+        expect(reviewPending(cwd, path, approving)).toMatchObject({ published: 1 });
+        commitParser(cwd, "export function parse(value) {\n    return value; // as given\n}\n");
+        const failing = join(cwd, "failing");
+        writeFileSync(failing, "#!/bin/sh\necho 'REVIEW_COMMAND is not set' >&2\nexit 1\n", { mode: 0o700 });
+        expect(Bun.spawnSync(["bun", cli, "bootstrap", "canonical.jsonl", pending], { cwd, env: { ...process.env, TRUTHINESS_REVIEWER: failing } }).exitCode).toBe(0);
+        const log = join(pending, "recheck.reviewer.log");
+        const deadline = Date.now() + backgroundRecheckWaitMs;
+        while (!(existsSync(log) && readFileSync(log, "utf8").includes("REVIEW_COMMAND")) && Date.now() < deadline) Bun.sleepSync(pollMs);
+        expect(backgroundReviewNotice(cwd, pending)).toContain("REVIEW_COMMAND is not set");
+    }, "export function parse(value) {\n    return value;\n}\n");
+});
+
 const backgroundRecheckWaitMs = 10_000;
 const pollMs = 100;
 

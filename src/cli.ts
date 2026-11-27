@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { appendFile, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { outcomeSuffix, reviewInBackground, sourceRevision } from "./agent.ts";
+import { outcomeSuffix, recheckLogFile, reviewInBackground, sourceRevision } from "./agent.ts";
 import { bootstrap, checkedAt, readBlob, readBlobsAt } from "./bootstrap.ts";
 import { claimRecordIDs, load, parseProposal, publish, publishAuthorized, publishRechecks, stage, unstage, type Graph } from "./store.ts";
 import { estimateTokens, index, notesByPath, query, staleDraft } from "./lookup.ts";
@@ -92,7 +92,7 @@ async function bootstrapStore(store: string, directory: string, pendingDirectory
     const current = await loadIfPresent(store);
     if (!checkedAt(current, revision)) await seedLandmarks(store, directory, revision, current);
     const pending = await recheckStore(store, directory, revision).catch(error => console.error(`recheck skipped: ${error instanceof Error ? error.message : error}`));
-    if (pending && process.env.TRUTHINESS_REVIEWER) recheckInBackground(store, directory);
+    if (pending && process.env.TRUTHINESS_REVIEWER) recheckInBackground(store, directory, pendingDirectory);
     if (pendingDirectory && process.env.TRUTHINESS_REVIEWER) await reviewCommittedDrafts(store, pendingDirectory, directory, revision);
 }
 
@@ -163,8 +163,14 @@ async function recheckStore(store: string, directory: string, revision: string, 
 }
 
 // Session start kills bootstrap after 15 s; reviewer calls take up to 30 s each, so they run detached after the code-only rechecks are published.
-function recheckInBackground(store: string, directory: string) {
-    spawn(process.execPath, [import.meta.path, "recheck-review", store], { cwd: directory, detached: true, stdio: "ignore" }).unref();
+function recheckInBackground(store: string, directory: string, pendingDirectory?: string) {
+    let errors: number | "ignore" = "ignore";
+    if (pendingDirectory) {
+        mkdirSync(pendingDirectory, { recursive: true });
+        errors = openSync(join(pendingDirectory, recheckLogFile), "w");
+    }
+    spawn(process.execPath, [import.meta.path, "recheck-review", store], { cwd: directory, detached: true, stdio: ["ignore", "ignore", errors] }).unref();
+    if (typeof errors === "number") closeSync(errors);
 }
 
 function observedPaths(batch: string): string[] {

@@ -146,6 +146,7 @@ export async function stageAndReview(program: string, cwd: string, store: string
 export const outcomeSuffix = ".outcome.json";
 const pidSuffix = ".reviewer.pid";
 const errorLogSuffix = ".reviewer.log";
+export const recheckLogFile = "recheck.reviewer.log";
 
 export function reviewInBackground(program: string[], cwd: string, store: string, path: string) {
     const outcome = openSync(`${path}${outcomeSuffix}`, "w");
@@ -184,6 +185,11 @@ export function backgroundReviewNotice(cwd: string, pendingDirectory: string): s
         const failure = reviewerFailure(`${batchPath}${errorLogSuffix}`);
         if (failure) reviewerErrors.add(failure);
         rmSync(`${batchPath}${errorLogSuffix}`, { force: true });
+    }
+    const recheckFailure = reviewerFailure(join(directory, recheckLogFile));
+    if (recheckFailure) {
+        reviewerErrors.add(recheckFailure);
+        rmSync(join(directory, recheckLogFile), { force: true });
     }
     const lines = [];
     if (rejected.length) lines.push(`Truthiness background review rejected ${listed(rejected)}. Revise the claim or its evidence and draft it again.`);
